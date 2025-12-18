@@ -42,69 +42,116 @@ std::vector<std::string> tokenize(const std::string& text) {
 
 // STEP 4: Stop word list
 std::unordered_set<std::string> stopWords = {
-     // articles
-    "a", "an", "the",
+
+    // articles
+    "a","an","the",
 
     // pronouns
-    "i", "me", "my", "mine", "myself",
-    "you", "your", "yours", "yourself", "yourselves",
-    "he", "him", "his", "himself",
-    "she", "her", "hers", "herself",
-    "it", "its", "itself",
-    "we", "us", "our", "ours", "ourselves",
-    "they", "them", "their", "theirs", "themselves",
+    "i","me","my","mine","myself",
+    "you","your","yours","yourself","yourselves",
+    "he","him","his","himself",
+    "she","her","hers","herself",
+    "it","its","itself",
+    "we","us","our","ours","ourselves",
+    "they","them","their","theirs","themselves",
+    "one","ones","someone","anyone","everyone","nobody","nothing","something",
 
-    // auxiliary verbs
-    "am", "is", "are", "was", "were",
-    "be", "been", "being",
-    "have", "has", "had", "having",
-    "do", "does", "did", "doing",
-    "will", "would", "shall", "should",
-    "can", "could", "may", "might", "must",
+    // auxiliary & modal verbs
+    "am","is","are","was","were",
+    "be","been","being",
+    "have","has","had","having",
+    "do","does","did","doing",
+    "will","would","shall","should",
+    "can","could","may","might","must","ought",
+
+    // common verb noise (base + inflections)
+    "say","says","said","saying",
+    "get","gets","got","getting",
+    "make","makes","made","making",
+    "go","goes","went","going",
+    "know","knows","knew","knowing",
+    "think","thinks","thought","thinking",
+    "see","sees","saw","seeing",
+    "come","comes","came","coming",
+    "take","takes","took","taking",
+    "use","uses","used","using",
+    "find","finds","found","finding",
+    "give","gives","gave","giving",
+    "tell","tells","told","telling",
+    "work","works","worked","working",
+    "seem","seems","seemed","seeming",
+    "try","tries","tried","trying",
+    "leave","leaves","left","leaving",
+    "call","calls","called","calling",
+    "start","starts","started","starting",
+    "end","ends","ended","ending",
+    "show","shows","showed","showing",
+    "play","plays","played","playing",
+    "run","runs","ran","running",
+    "move","moves","moved","moving",
 
     // conjunctions
-    "and", "or", "but", "if", "while", "because", "as",
-    "until", "unless", "although", "though", "whereas",
+    "and","or","but","if","while","because","as",
+    "until","unless","although","though","whereas",
+    "whether","nor","yet","so",
 
     // prepositions
-    "of", "to", "in", "on", "at", "by", "for", "with",
-    "about", "against", "between", "into", "through",
-    "during", "before", "after", "above", "below",
-    "from", "up", "down", "out", "off", "over", "under",
+    "of","to","in","on","at","by","for","with",
+    "about","against","between","into","through",
+    "during","before","after","above","below",
+    "from","up","down","out","off","over","under",
+    "within","without","across","behind","beyond",
+    "near","along","among","around","toward","towards",
 
-    // determiners
-    "this", "that", "these", "those",
-    "each", "every", "either", "neither",
-    "some", "any", "no", "none", "all", "both",
-    "such", "same", "other", "another",
+    // determiners & quantifiers
+    "this","that","these","those",
+    "each","every","either","neither",
+    "some","any","no","none","all","both",
+    "many","much","few","several","most","least",
+    "such","same","other","another",
 
     // adverbs
-    "not", "only", "very", "too", "quite",
-    "so", "then", "there", "here", "when",
-    "where", "why", "how",
+    "not","only","very","too","quite",
+    "so","then","there","here",
+    "when","where","why","how",
+    "again","once","ever","never",
+    "already","still","often","sometimes","usually",
 
-    // common verbs (high-frequency noise)
-    "say", "says", "said",
-    "get", "gets", "got",
-    "make", "makes", "made",
-    "go", "goes", "went",
-    "know", "knows", "knew",
-    "think", "thinks", "thought",
-    "see", "sees", "saw",
-    "come", "comes", "came",
-    "take", "takes", "took",
-    "use", "uses", "used",
-    "find", "finds", "found",
-    "give", "gives", "gave",
-    "tell", "tells", "told",
-    "work", "works", "worked",
+    // comparatives & intensifiers
+    "more","most","less","least",
+    "enough","rather","quite",
 
-    // misc fillers
-    "yes", "no",
-    "also", "just", "even",
-    "than", "rather",
-    "via", "per"
+    // discourse / filler words
+    "yes","no","ok","okay",
+    "also","just","even","though",
+    "however","therefore","thus","hence",
+    "otherwise","meanwhile","furthermore",
+    "moreover","nevertheless",
+
+    // time & frequency
+    "today","yesterday","tomorrow",
+    "now","then","soon","later",
+    "always","never","often","sometimes","usually",
+
+    // question words
+    "who","whom","whose",
+    "which","what","when","where","why","how",
+
+    // numbers (written)
+    "zero","one","two","three","four","five","six","seven","eight","nine","ten",
+    "first","second","third","fourth","fifth","sixth","seventh","eighth","ninth","tenth",
+
+    // misc abbreviations & noise
+    "etc","ie","eg","vs","via","per",
+
+    // web / modern noise
+    "http","https","www","com","org","net",
+
+    // generic nouns often treated as noise
+    "thing","things","stuff","something","anything","everything",
+    "someone","anyone","everyone"
 };
+
 
 int main() {
     fs::path dataDir = "data";
