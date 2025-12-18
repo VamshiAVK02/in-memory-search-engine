@@ -1,0 +1,5 @@
+Today I reviewed my study plan and decided to focus more on backend development.
+Java feels more comfortable now, especially when working with structured data.
+
+Tomorrow I plan to experiment with databases and try connecting PostgreSQL
+to a small Java application. Progress feels steady and motivating.

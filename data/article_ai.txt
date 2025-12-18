@@ -1,0 +1,8 @@
+Artificial intelligence is the study of computer systems that can perform tasks
+normally requiring human intelligence. These tasks include learning, reasoning,
+problem solving, and understanding natural language.
+
+In recent years, AI has moved from research labs into everyday life. Recommendation
+systems, voice assistants, and automated translation tools are all examples of
+applied artificial intelligence. As computing power increases, AI systems continue
+to grow more capable and more widespread.

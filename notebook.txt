@@ -1,0 +1,8 @@
+// word -> list of document IDs
+unordered_map<string, vector<int>> invertedIndex;
+
+// document ID -> file name
+unordered_map<int, string> docIdToName;
+
+// stop words
+unordered_set<string> stopWords;

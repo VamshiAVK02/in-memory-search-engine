@@ -1,0 +1,6 @@
+Software development requires both logical thinking and creativity.
+Writing clean, maintainable code is just as important as making the program work.
+
+Developers often collaborate using version control systems like Git.
+Clear documentation and readable code help teams scale projects over time and
+reduce long-term maintenance costs.
