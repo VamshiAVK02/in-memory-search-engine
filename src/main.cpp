@@ -3,6 +3,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include <cctype>
 
 namespace fs = std::filesystem;
 
@@ -12,11 +13,35 @@ struct Document {
     std::string content;
 };
 
+// STEP 3: Tokenizer
+std::vector<std::string> tokenize(const std::string& text) {
+    std::vector<std::string> tokens;
+    std::string current;
+
+    for (char ch : text) {
+        char c = std::tolower(static_cast<unsigned char>(ch));
+
+        if (std::isalnum(static_cast<unsigned char>(c))) {
+            current.push_back(c);
+        } else {
+            if (current.length() >= 2) {
+                tokens.push_back(current);
+            }
+            current.clear();
+        }
+    }
+
+    // Handle last token
+    if (current.length() >= 2) {
+        tokens.push_back(current);
+    }
+
+    return tokens;
+}
+
 int main() {
-    // Path to data directory
     fs::path dataDir = "data";
 
-    // Validate directory exists
     if (!fs::exists(dataDir) || !fs::is_directory(dataDir)) {
         std::cerr << "Data directory not found\n";
         return 1;
@@ -25,32 +50,35 @@ int main() {
     int docID = 0;
     std::vector<Document> documents;
 
-    // Iterate over files in /data
     for (const auto& entry : fs::directory_iterator(dataDir)) {
-        if (!entry.is_regular_file()) {
-            continue;
-        }
+        if (!entry.is_regular_file()) continue;
 
         std::string filePath = entry.path().string();
 
-        // Open and read file
         std::ifstream file(entry.path());
         if (!file.is_open()) {
             std::cerr << "Failed to open " << filePath << "\n";
             continue;
         }
 
-        // Read full content
         std::string content(
             (std::istreambuf_iterator<char>(file)),
             std::istreambuf_iterator<char>()
         );
 
-        // Validation output
+        // Validation: docID assignment
         std::cout << "DocID " << docID << " -> " << filePath << "\n";
 
-        // Store document
         documents.push_back({docID, filePath, content});
+
+        // STEP 3 validation: tokenize and print tokens
+        auto tokens = tokenize(content);
+        std::cout << "Tokens:\n";
+        for (const auto& token : tokens) {
+            std::cout << token << " ";
+        }
+        std::cout << "\n\n";
+
         docID++;
     }
 
