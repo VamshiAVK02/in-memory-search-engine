@@ -171,6 +171,10 @@ int main() {
 
     int docID = 0;
     std::vector<Document> documents;
+    // Document length map
+    // docID -> number of valid tokens in the document
+    std::unordered_map<int, int> docLength;
+
     
     // Inverted Index
     // word -> { docID -> frequency }
@@ -206,6 +210,8 @@ int main() {
 
         // STEP 3 + STEP 4 validation
         auto tokens = tokenize(content);
+        docLength[docID] = 0;
+
         
         for (const auto& token : tokens) {
             // Skip stop words
@@ -213,10 +219,12 @@ int main() {
                  continue;
             }
 
-            // STEP 5: build inverted index (NO deduplication)
-            // Increment term frequency for this word in this document
+            // Increment term frequency
             invertedIndex[token][docID]++;
-}
+
+             // Increment document length (valid token)
+             docLength[docID]++;
+       }
 
         std::cout << "Filtered tokens:\n";
         for (const auto& token : tokens) {
@@ -240,6 +248,11 @@ int main() {
          }
 
          std::cout << "}\n";
+     }
+     
+     std::cout << "\nDocument Lengths:\n";
+     for (const auto& entry : docLength) {
+          std::cout << "Doc " << entry.first << " length: "<< entry.second << "\n";
      }
 
     
