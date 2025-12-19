@@ -257,71 +257,45 @@ int main() {
 
     
 
-    // STEP 6: Query & Display
+    // STEP 6: Multi-word Query Support
     std::cout << "\nEnter query: ";
-    std::string queryLine;
-    std::getline(std::cin >> std::ws, queryLine);
-     
-    auto queryTokens = tokenize(queryLine); 
+    std::string query;
+    std::getline(std::cin, query);
 
-    std::unordered_set<int> resultDocs;
+    // Tokenize query
+    auto queryTokens = tokenize(query);
 
+    // Remove stop words
+    std::vector<std::string> filteredQueryTokens;
     for (const auto& token : queryTokens) {
-
-        // Skip stop words in query
-        if (stopWords.find(token) != stopWords.end()) {
-             continue;
+        if (stopWords.find(token) == stopWords.end()) {
+            filteredQueryTokens.push_back(token);
         }
+    }
 
-        auto it = invertedIndex.find(token);
-         if (it == invertedIndex.end()) {
-            continue;  // token not in index
-        }
+    // Union of document IDs
+    std::unordered_set<int> resultDocIDs;
 
-        // UNION: add all documents containing this token
+    for (const auto& token : filteredQueryTokens) {
+         auto it = invertedIndex.find(token);
+         if (it == invertedIndex.end()) continue;
+
         for (const auto& docPair : it->second) {
-            resultDocs.insert(docPair.first);
+            resultDocIDs.insert(docPair.first);
         }
+    }
 
-   }
-    if (resultDocs.empty()) {
+    // Display results
+    if (resultDocIDs.empty()) {
        std::cout << "No documents found.\n";
     } 
     else {
-          std::cout << "Found in documents:\n";
-         for (int docId : resultDocs) {
-             std::cout << "- " << documents[docId].path << "\n";
-         }
-   }
-
-
-
-
-
-    // Normalize query
-    std::string normalizedQuery;
-    for (char ch : query) {
-         char c = std::tolower(static_cast<unsigned char>(ch));
-         if (std::isalnum(static_cast<unsigned char>(c))) {
-             normalizedQuery.push_back(c);
-         }
-    }
-
-    // Lookup
-    auto it = invertedIndex.find(normalizedQuery);
-
-    if (it == invertedIndex.end()) {
-        std::cout << "No documents found.\n";
-    } 
-    else {
         std::cout << "Found in documents:\n";
-
-        for (const auto& docPair : it->second) {
-            int docId = docPair.first;
+        for (int docId : resultDocIDs) {
             std::cout << "- " << documents[docId].path << "\n";
         }
+    }
 
-   }
 
     return 0;
 }
