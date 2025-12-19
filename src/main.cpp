@@ -180,6 +180,10 @@ int main() {
     // word -> { docID -> frequency }
     std::unordered_map< std::string, std::unordered_map<int, int>> invertedIndex;
 
+    // Maps document ID to file path (for clean output)
+    std::unordered_map<int, std::string> docIdToName;
+
+
     for (const auto& entry : fs::directory_iterator(dataDir)) {
         if (!entry.is_regular_file()) continue;
 
@@ -199,6 +203,7 @@ int main() {
         if (content.empty()) {
            std::cout << "DocID " << docID << " -> " << filePath << " (empty file)\n";
            documents.push_back({docID, filePath, content});
+           docIdToName[docID] = filePath;
            docID++;
            continue;
          }
@@ -207,6 +212,8 @@ int main() {
         std::cout << "DocID " << docID << " -> " << filePath << "\n";
 
         documents.push_back({docID, filePath, content});
+        docIdToName[docID] = filePath;
+
 
         // STEP 3 + STEP 4 validation
         auto tokens = tokenize(content);
@@ -252,7 +259,7 @@ int main() {
      
      std::cout << "\nDocument Lengths:\n";
      for (const auto& entry : docLength) {
-          std::cout << "Doc " << entry.first << " length: "<< entry.second << "\n";
+          std::cout << "Doc " << entry.first<< " length: "<< entry.second << "\n";
      }
 
     
@@ -292,7 +299,7 @@ int main() {
     else {
         std::cout << "Found in documents:\n";
         for (int docId : resultDocIDs) {
-            std::cout << "- " << documents[docId].path << "\n";
+            std::cout << "- " << docIdToName[docId] << "\n";
         }
     }
 
