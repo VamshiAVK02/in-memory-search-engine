@@ -1,4 +1,4 @@
-/**/
+
 #include <iostream>
 #include <filesystem>
 #include <fstream>
@@ -224,7 +224,34 @@ int main() {
          }
          std::cout << "]\n";
     }
+    
+    // STEP 6: Query & Display
+    std::cout << "\nEnter word: ";
+    std::string query;
+    std::cin >> query;
+
+    // Normalize query
+    std::string normalizedQuery;
+    for (char ch : query) {
+         char c = std::tolower(static_cast<unsigned char>(ch));
+         if (std::isalnum(static_cast<unsigned char>(c))) {
+             normalizedQuery.push_back(c);
+         }
+    }
+
+    // Lookup
+    auto it = invertedIndex.find(normalizedQuery);
+
+    if (it == invertedIndex.end()) {
+        std::cout << "No documents found.\n";
+    } 
+    else {
+        std::cout << "Found in documents:\n";
+        for (int docId : it->second) {
+            std::cout << "- " << documents[docId].path << "\n";
+        }
+   }
 
     return 0;
 }
-*/
+
