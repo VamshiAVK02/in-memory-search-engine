@@ -18,6 +18,11 @@ struct Document {
 };
 
 // STEP 3: Tokenizer
+// - Converts all characters to lowercase
+// - Keeps only alphanumeric characters
+// - Splits on any non-alphanumeric delimiter
+// - Ignores words shorter than length 2
+// This ensures consistent normalization for indexing and querying
 std::vector<std::string> tokenize(const std::string& text) {
     std::vector<std::string> tokens;
     std::string current;
@@ -167,6 +172,9 @@ int main() {
     int docID = 0;
     std::vector<Document> documents;
     
+    // Inverted Index
+    // Maps each token to a list of document IDs where it appears
+    // Example: "learning" -> [0, 2, 3]
     std::unordered_map<std::string, std::vector<int>> invertedIndex;
 
     for (const auto& entry : fs::directory_iterator(dataDir)) {
@@ -184,6 +192,13 @@ int main() {
             (std::istreambuf_iterator<char>(file)),
             std::istreambuf_iterator<char>()
         );
+
+        if (content.empty()) {
+           std::cout << "DocID " << docID << " -> " << filePath << " (empty file)\n";
+           documents.push_back({docID, filePath, content});
+           docID++;
+           continue;
+         }
 
         // Validation: docID assignment
         std::cout << "DocID " << docID << " -> " << filePath << "\n";
@@ -225,6 +240,15 @@ int main() {
          std::cout << "]\n";
     }
     
+    for (auto& entry : invertedIndex) {
+         auto& postings = entry.second;
+         std::sort(postings.begin(), postings.end());
+         postings.erase(
+           std::unique(postings.begin(), postings.end()),
+          postings.end()
+         );
+    }
+
     // STEP 6: Query & Display
     std::cout << "\nEnter word: ";
     std::string query;
