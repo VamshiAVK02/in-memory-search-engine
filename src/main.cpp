@@ -1,3 +1,4 @@
+/**/
 #include <iostream>
 #include <filesystem>
 #include <fstream>
@@ -5,6 +6,8 @@
 #include <vector>
 #include <cctype>
 #include <unordered_set>
+#include <unordered_map>
+
 
 namespace fs = std::filesystem;
 
@@ -163,6 +166,8 @@ int main() {
 
     int docID = 0;
     std::vector<Document> documents;
+    
+    std::unordered_map<std::string, std::vector<int>> invertedIndex;
 
     for (const auto& entry : fs::directory_iterator(dataDir)) {
         if (!entry.is_regular_file()) continue;
@@ -187,6 +192,16 @@ int main() {
 
         // STEP 3 + STEP 4 validation
         auto tokens = tokenize(content);
+        
+        for (const auto& token : tokens) {
+            // Skip stop words
+            if (stopWords.find(token) != stopWords.end()) {
+                 continue;
+            }
+
+            // STEP 5: build inverted index (NO deduplication)
+            invertedIndex[token].push_back(docID);
+     }
 
         std::cout << "Filtered tokens:\n";
         for (const auto& token : tokens) {
@@ -199,6 +214,17 @@ int main() {
 
         docID++;
     }
+    
+    std::cout << "\nInverted Index:\n";
+
+    for (const auto& entry : invertedIndex) {
+         std::cout << entry.first << " -> [ ";
+         for (int id : entry.second) {
+            std::cout << id << " ";
+         }
+         std::cout << "]\n";
+    }
 
     return 0;
 }
+*/
