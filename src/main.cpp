@@ -258,9 +258,45 @@ int main() {
     
 
     // STEP 6: Query & Display
-    std::cout << "\nEnter word: ";
-    std::string query;
-    std::cin >> query;
+    std::cout << "\nEnter query: ";
+    std::string queryLine;
+    std::getline(std::cin >> std::ws, queryLine);
+     
+    auto queryTokens = tokenize(queryLine); 
+
+    std::unordered_set<int> resultDocs;
+
+    for (const auto& token : queryTokens) {
+
+        // Skip stop words in query
+        if (stopWords.find(token) != stopWords.end()) {
+             continue;
+        }
+
+        auto it = invertedIndex.find(token);
+         if (it == invertedIndex.end()) {
+            continue;  // token not in index
+        }
+
+        // UNION: add all documents containing this token
+        for (const auto& docPair : it->second) {
+            resultDocs.insert(docPair.first);
+        }
+
+   }
+    if (resultDocs.empty()) {
+       std::cout << "No documents found.\n";
+    } 
+    else {
+          std::cout << "Found in documents:\n";
+         for (int docId : resultDocs) {
+             std::cout << "- " << documents[docId].path << "\n";
+         }
+   }
+
+
+
+
 
     // Normalize query
     std::string normalizedQuery;
