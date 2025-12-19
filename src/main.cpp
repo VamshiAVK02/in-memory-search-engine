@@ -173,9 +173,8 @@ int main() {
     std::vector<Document> documents;
     
     // Inverted Index
-    // Maps each token to a list of document IDs where it appears
-    // Example: "learning" -> [0, 2, 3]
-    std::unordered_map<std::string, std::vector<int>> invertedIndex;
+    // word -> { docID -> frequency }
+    std::unordered_map< std::string, std::unordered_map<int, int>> invertedIndex;
 
     for (const auto& entry : fs::directory_iterator(dataDir)) {
         if (!entry.is_regular_file()) continue;
@@ -215,8 +214,9 @@ int main() {
             }
 
             // STEP 5: build inverted index (NO deduplication)
-            invertedIndex[token].push_back(docID);
-     }
+            // Increment term frequency for this word in this document
+            invertedIndex[token][docID]++;
+}
 
         std::cout << "Filtered tokens:\n";
         for (const auto& token : tokens) {
@@ -230,24 +230,19 @@ int main() {
         docID++;
     }
     
-    std::cout << "\nInverted Index:\n";
+     std::cout << "\nInverted Index (with frequencies):\n";
 
-    for (const auto& entry : invertedIndex) {
-         std::cout << entry.first << " -> [ ";
-         for (int id : entry.second) {
-            std::cout << id << " ";
+     for (const auto& entry : invertedIndex) {
+          std::cout << entry.first << " -> { ";
+
+         for (const auto& docPair : entry.second) {
+              std::cout << docPair.first << ":" << docPair.second << " ";
          }
-         std::cout << "]\n";
-    }
+
+         std::cout << "}\n";
+     }
+
     
-    for (auto& entry : invertedIndex) {
-         auto& postings = entry.second;
-         std::sort(postings.begin(), postings.end());
-         postings.erase(
-           std::unique(postings.begin(), postings.end()),
-          postings.end()
-         );
-    }
 
     // STEP 6: Query & Display
     std::cout << "\nEnter word: ";
@@ -271,9 +266,12 @@ int main() {
     } 
     else {
         std::cout << "Found in documents:\n";
-        for (int docId : it->second) {
+
+        for (const auto& docPair : it->second) {
+            int docId = docPair.first;
             std::cout << "- " << documents[docId].path << "\n";
         }
+
    }
 
     return 0;
