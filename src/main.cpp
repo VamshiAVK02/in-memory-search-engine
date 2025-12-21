@@ -17,12 +17,13 @@ struct Document {
     std::string content;
 };
 
-// STEP 3: Tokenizer
-// - Converts all characters to lowercase
-// - Keeps only alphanumeric characters
-// - Splits on any non-alphanumeric delimiter
+// STEP 3: 
+// Tokenizer function
+// - Converts text to lowercase
+// - Removes punctuation
+// - Splits on any non-alphanumeric character
 // - Ignores words shorter than length 2
-// This ensures consistent normalization for indexing and querying
+// Used for both document indexing and query processing
 std::vector<std::string> tokenize(const std::string& text) {
     std::vector<std::string> tokens;
     std::string current;
@@ -160,6 +161,64 @@ std::unordered_set<std::string> stopWords = {
     "someone","anyone","everyone"
 };
 
+void saveIndex(
+    const std::string& filename,
+    const std::unordered_map<std::string, std::unordered_map<int,int>>& invertedIndex
+);
+
+void loadIndex(
+    const std::string& filename,
+    std::unordered_map<std::string, std::unordered_map<int,int>>& invertedIndex
+);
+
+void saveIndex(
+    const std::string& filename,
+    const std::unordered_map<std::string, std::unordered_map<int,int>>& invertedIndex
+) {
+    std::ofstream out(filename);
+    if (!out.is_open()) {
+        std::cerr << "Failed to open index file for writing\n";
+        return;
+    }
+
+    for (const auto& wordEntry : invertedIndex) {
+        const std::string& word = wordEntry.first;
+
+        for (const auto& docPair : wordEntry.second) {
+            int docID = docPair.first;
+            int freq  = docPair.second;
+
+            out << word << " " << docID << " " << freq << "\n";
+        }
+    }
+
+    out.close();
+}
+
+void loadIndex(
+    const std::string& filename,
+    std::unordered_map<std::string, std::unordered_map<int,int>>& invertedIndex
+) {
+    std::ifstream in(filename);
+    if (!in.is_open()) {
+        std::cerr << "Index file not found. Rebuilding index.\n";
+        return;
+    }
+
+    invertedIndex.clear();
+
+    std::string word;
+    int docID, freq;
+
+    while (in >> word >> docID >> freq) {
+        invertedIndex[word][docID] = freq;
+    }
+
+    in.close();
+}
+
+const std::string INDEX_FILE = "index.txt";
+
 
 int main() {
     fs::path dataDir = "data";
@@ -177,12 +236,19 @@ int main() {
 
     
     // Inverted Index
-    // word -> { docID -> frequency }
+    // Maps each word to a map of document IDs and term frequencies
+    // Example: "learning" -> { 0:3, 2:1 }
+
     std::unordered_map< std::string, std::unordered_map<int, int>> invertedIndex;
+
+    // Try loading existing index from disk
+    loadIndex(INDEX_FILE, invertedIndex);
+
+    bool indexLoaded = !invertedIndex.empty();
+
 
     // Maps document ID to file path (for clean output)
     std::unordered_map<int, std::string> docIdToName;
-
 
     for (const auto& entry : fs::directory_iterator(dataDir)) {
         if (!entry.is_regular_file()) continue;
@@ -230,41 +296,29 @@ int main() {
             invertedIndex[token][docID]++;
 
              // Increment document length (valid token)
+             // Count number of valid (non-stopword) tokens in this document
+             // Used later for TF-IDF normalization
+
              docLength[docID]++;
        }
 
-        std::cout << "Filtered tokens:\n";
-        for (const auto& token : tokens) {
-            if (stopWords.find(token) != stopWords.end()) {
-                continue; // skip stop words
-            }
-            std::cout << token << " ";
-        }
-        std::cout << "\n\n";
-
         docID++;
+
     }
-    
-     std::cout << "\nInverted Index (with frequencies):\n";
 
-     for (const auto& entry : invertedIndex) {
-          std::cout << entry.first << " -> { ";
+    if (!indexLoaded) {
+        saveIndex(INDEX_FILE, invertedIndex);
+    }
 
-         for (const auto& docPair : entry.second) {
-              std::cout << docPair.first << ":" << docPair.second << " ";
-         }
-
-         std::cout << "}\n";
-     }
-     
-     std::cout << "\nDocument Lengths:\n";
-     for (const auto& entry : docLength) {
-          std::cout << "Doc " << entry.first<< " length: "<< entry.second << "\n";
-     }
-
-    
+  
 
     // STEP 6: Multi-word Query Support
+    // Multi-word query processing
+    // - Tokenize user query
+    // - Remove stop words
+    // - Perform UNION over posting lists
+    // - No ranking at this stage
+
     std::cout << "\nEnter query: ";
     std::string query;
     std::getline(std::cin, query);
