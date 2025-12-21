@@ -312,50 +312,66 @@ int main() {
 
   
 
-    // STEP 6: Multi-word Query Support
-    // Multi-word query processing
-    // - Tokenize user query
-    // - Remove stop words
-    // - Perform UNION over posting lists
-    // - No ranking at this stage
+   // STEP 6: Multi-word Query Support
+   // --------------------------------
+   // - Tokenize user query
+   // - Remove stop words
+   // - Remove duplicate query terms
+   // - Perform UNION over posting lists
+   // - No ranking at this stage
+   std::cout << "\nEnter query: ";
+   std::string query;
+   std::getline(std::cin, query);
 
-    std::cout << "\nEnter query: ";
-    std::string query;
-    std::getline(std::cin, query);
+   // Handle empty query
+   if (query.empty()) {
+       std::cout << "Empty query. Please enter one or more words.\n";
+       return 0;
+   }
 
-    // Tokenize query
-    auto queryTokens = tokenize(query);
+   // Tokenize query using same tokenizer as documents
+   auto queryTokens = tokenize(query);
 
-    // Remove stop words
-    std::vector<std::string> filteredQueryTokens;
-    for (const auto& token : queryTokens) {
-        if (stopWords.find(token) == stopWords.end()) {
-            filteredQueryTokens.push_back(token);
+   // Remove stop words and duplicate query terms
+   std::unordered_set<std::string> filteredQueryTokens;
+   for (const auto& token : queryTokens) {
+       if (stopWords.find(token) == stopWords.end()) {
+          filteredQueryTokens.insert(token);
+       }
+   }
+
+   // Union of document IDs (ensures uniqueness)
+   std::unordered_set<int> resultDocIDs;
+   bool anyTokenFoundInIndex = false;
+
+   for (const auto& token : filteredQueryTokens) {
+        auto it = invertedIndex.find(token);
+        if (it == invertedIndex.end()) {
+           continue;  // token not in index
         }
-    }
 
-    // Union of document IDs
-    std::unordered_set<int> resultDocIDs;
+         anyTokenFoundInIndex = true;
 
-    for (const auto& token : filteredQueryTokens) {
-         auto it = invertedIndex.find(token);
-         if (it == invertedIndex.end()) continue;
-
-        for (const auto& docPair : it->second) {
-            resultDocIDs.insert(docPair.first);
-        }
+         // it->second is: { docID -> term frequency }
+         for (const auto& docPair : it->second) {
+              resultDocIDs.insert(docPair.first);
+         }
     }
 
     // Display results
-    if (resultDocIDs.empty()) {
-       std::cout << "No documents found.\n";
-    } 
+    if (!anyTokenFoundInIndex) {
+        std::cout << "No query terms found in the index.\n";
+    }
+    else if (resultDocIDs.empty()) {
+             std::cout << "No documents found.\n";
+    }
     else {
-        std::cout << "Found in documents:\n";
+        std::cout << "Found in documents (" << resultDocIDs.size() << "):\n";
         for (int docId : resultDocIDs) {
-            std::cout << "- " << docIdToName[docId] << "\n";
+             std::cout << "- " << docIdToName[docId] << "\n";
         }
     }
+
 
 
     return 0;
