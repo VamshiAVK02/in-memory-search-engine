@@ -314,13 +314,13 @@ int main() {
 
   
 
-   // STEP 6: Multi-word Query Support + TF-IDF Scoring
+ // STEP 6: Multi-word Query Support + TF-IDF Ranking
 // ------------------------------------------------
 // - Tokenize user query
 // - Remove stop words
 // - Remove duplicate query terms
-// - Compute TF-IDF scores for matching documents
-// - No ranking / sorting yet (validation only)
+// - Compute TF-IDF scores
+// - Display ranked Top-K results
 
 std::cout << "\nEnter query: ";
 std::string query;
@@ -355,7 +355,7 @@ std::vector<std::string> queryTokenVector(
     filteredQueryTokens.end()
 );
 
-// STEP 🔟 Validation: Compute TF-IDF scores
+// Compute ranked TF-IDF results (Top-K)
 auto rankedResults = rankDocuments(
     queryTokenVector,
     invertedIndex,
@@ -363,22 +363,19 @@ auto rankedResults = rankDocuments(
     documents.size()
 );
 
-// Display TF-IDF scores (debug validation)
+// Display ranked results
 if (rankedResults.empty()) {
     std::cout << "No query terms found in the index.\n";
 }
 else {
-    std::cout << "TF-IDF Scores:\n";
+    int rank = 1;
     for (const auto& p : rankedResults) {
-        std::cout << "Doc " << p.first
-                  << " (" << docIdToName[p.first] << ")"
-                  << " score = " << p.second << "\n";
+        std::cout << "Rank " << rank << ": "
+                  << docIdToName[p.first]
+                  << " (score: " << p.second << ")\n";
+        rank++;
     }
 }
-
-     
-
-
 
     return 0;
 }

@@ -1,5 +1,7 @@
 #include "ranker.h"
 #include <cmath>
+#include <queue>
+#include <utility>
 
 using std::vector;
 using std::string;
@@ -24,7 +26,9 @@ vector<pair<int,double>> rankDocuments(
     const unordered_map<string, unordered_map<int,int>>& invertedIndex,
     const unordered_map<int,int>& docLength,
     int totalDocs
-) {
+) { 
+    const int K = 5;  // return top 5 documents
+
     unordered_map<int, double> docScores;
 
     for (const auto& token : queryTokens) {
@@ -46,11 +50,31 @@ vector<pair<int,double>> rankDocuments(
             docScores[docID] += tf * idf;
         }
     }
+    
+    std::priority_queue<std::pair<double, int>> pq;
 
     vector<pair<int,double>> results;
     for (const auto& entry : docScores) {
-        results.emplace_back(entry.first, entry.second);
+        int docID = entry.first;
+        double score = entry.second;
+
+        pq.push({score, docID});
     }
 
-    return results;
+    vector<pair<int,double>> rankedResults;
+     int count = 0;
+
+    while (!pq.empty() && count < K) {
+       auto top = pq.top();
+       pq.pop();
+
+       double score = top.first;
+       int docID = top.second;
+
+       rankedResults.emplace_back(docID, score);
+       count++;
+    }
+
+    return rankedResults;
+
 }
