@@ -21,13 +21,14 @@ double computeIDF(int totalDocs, int docsWithTerm) {
 }
 
 // Computes TF-IDF scores for query documents
-vector<pair<int,double>> rankDocuments(
-    const vector<string>& queryTokens,
-    const unordered_map<string, unordered_map<int,int>>& invertedIndex,
-    const unordered_map<int,int>& docLength,
-    int totalDocs
-) { 
-    const int K = 5;  // return top 5 documents
+std::vector<std::pair<int,double>> rankDocuments(
+    const std::vector<std::string>& queryTokens,
+    const std::unordered_map<std::string, std::unordered_map<int,int>>& invertedIndex,
+    const std::unordered_map<int,int>& docLength,
+    int totalDocs,
+    int K
+)
+ { 
 
     unordered_map<int, double> docScores;
 

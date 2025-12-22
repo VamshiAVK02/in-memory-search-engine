@@ -314,13 +314,13 @@ int main() {
 
   
 
- // STEP 6: Multi-word Query Support + TF-IDF Ranking
-// ------------------------------------------------
+ // STEP 6: Multi-word Query Support + TF-IDF Ranking + Top-K
+// --------------------------------------------------------
 // - Tokenize user query
 // - Remove stop words
 // - Remove duplicate query terms
 // - Compute TF-IDF scores
-// - Display ranked Top-K results
+// - Display ranked Top-K results (configurable)
 
 std::cout << "\nEnter query: ";
 std::string query;
@@ -349,6 +349,21 @@ if (filteredQueryTokens.empty()) {
     return 0;
 }
 
+// Ask for Top-K
+std::cout << "Enter K (press Enter for default 5): ";
+std::string kInput;
+std::getline(std::cin, kInput);
+
+int K = 5; // default
+if (!kInput.empty()) {
+    try {
+        K = std::stoi(kInput);
+        if (K <= 0) K = 5;
+    } catch (...) {
+        K = 5;
+    }
+}
+
 // Convert query tokens to vector (required by ranker)
 std::vector<std::string> queryTokenVector(
     filteredQueryTokens.begin(),
@@ -360,7 +375,8 @@ auto rankedResults = rankDocuments(
     queryTokenVector,
     invertedIndex,
     docLength,
-    documents.size()
+    documents.size(),
+    K
 );
 
 // Display ranked results
@@ -376,6 +392,7 @@ else {
         rank++;
     }
 }
+
 
     return 0;
 }

@@ -17,7 +17,9 @@ std::vector<std::pair<int,double>> rankDocuments(
     const std::vector<std::string>& queryTokens,
     const std::unordered_map<std::string, std::unordered_map<int,int>>& invertedIndex,
     const std::unordered_map<int,int>& docLength,
-    int totalDocs
+    int totalDocs,
+    int K
 );
+
 
 #endif
