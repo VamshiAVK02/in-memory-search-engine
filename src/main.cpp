@@ -2,6 +2,7 @@
 #include <iostream>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 #include <cctype>
@@ -19,37 +20,44 @@ struct Document {
     std::string content;
 };
 
-// STEP 3: 
-// Tokenizer function
-// - Converts text to lowercase
-// - Removes punctuation
-// - Splits on any non-alphanumeric character
-// - Ignores words shorter than length 2
-// Used for both document indexing and query processing
+// STEP 3: Tokenizer
+// -----------------
+// Rules:
+// - Converts all characters to lowercase
+// - Treats any non-alphanumeric character as a delimiter
+// - Splits on whitespace and punctuation
+// - Ignores tokens with length < 2
+//
+// Notes:
+// - Used for both document indexing and query processing
+// - Token positions are preserved by the caller (important for positional index)
+
 std::vector<std::string> tokenize(const std::string& text) {
     std::vector<std::string> tokens;
     std::string current;
+    current.reserve(16); // small optimization
 
-    for (char ch : text) {
-        char c = std::tolower(static_cast<unsigned char>(ch));
+    for (unsigned char ch : text) {
+        char c = std::tolower(ch);
 
-        if (std::isalnum(static_cast<unsigned char>(c))) {
+        if (std::isalnum(c)) {
             current.push_back(c);
         } else {
-            if (current.length() >= 2) {
+            if (current.size() >= 2) {
                 tokens.push_back(current);
             }
             current.clear();
         }
     }
 
-    // Handle last token
-    if (current.length() >= 2) {
+    // Push last token if present
+    if (current.size() >= 2) {
         tokens.push_back(current);
     }
 
     return tokens;
 }
+
 
 // STEP 4: Stop word list
 std::unordered_set<std::string> stopWords = {
@@ -162,20 +170,13 @@ std::unordered_set<std::string> stopWords = {
     "thing","things","stuff","something","anything","everything",
     "someone","anyone","everyone"
 };
-
+// Save positional index to disk
 void saveIndex(
     const std::string& filename,
-    const std::unordered_map<std::string, std::unordered_map<int,int>>& invertedIndex
-);
-
-void loadIndex(
-    const std::string& filename,
-    std::unordered_map<std::string, std::unordered_map<int,int>>& invertedIndex
-);
-
-void saveIndex(
-    const std::string& filename,
-    const std::unordered_map<std::string, std::unordered_map<int,int>>& invertedIndex
+    const std::unordered_map<
+        std::string,
+        std::unordered_map<int, std::vector<int>>
+    >& positionalIndex
 ) {
     std::ofstream out(filename);
     if (!out.is_open()) {
@@ -183,23 +184,31 @@ void saveIndex(
         return;
     }
 
-    for (const auto& wordEntry : invertedIndex) {
+    for (const auto& wordEntry : positionalIndex) {
         const std::string& word = wordEntry.first;
 
         for (const auto& docPair : wordEntry.second) {
             int docID = docPair.first;
-            int freq  = docPair.second;
+            const std::vector<int>& positions = docPair.second;
 
-            out << word << " " << docID << " " << freq << "\n";
+            out << word << " " << docID;
+            for (int pos : positions) {
+                out << " " << pos;
+            }
+            out << "\n";
         }
     }
 
     out.close();
 }
 
+// Load positional index from disk
 void loadIndex(
     const std::string& filename,
-    std::unordered_map<std::string, std::unordered_map<int,int>>& invertedIndex
+    std::unordered_map<
+        std::string,
+        std::unordered_map<int, std::vector<int>>
+    >& positionalIndex
 ) {
     std::ifstream in(filename);
     if (!in.is_open()) {
@@ -207,19 +216,27 @@ void loadIndex(
         return;
     }
 
-    invertedIndex.clear();
+    positionalIndex.clear();
 
-    std::string word;
-    int docID, freq;
+    std::string line;
+    while (std::getline(in, line)) {
+        std::istringstream iss(line);
 
-    while (in >> word >> docID >> freq) {
-        invertedIndex[word][docID] = freq;
+        std::string word;
+        int docID;
+        iss >> word >> docID;
+
+        int pos;
+        while (iss >> pos) {
+            positionalIndex[word][docID].push_back(pos);
+        }
     }
 
     in.close();
 }
 
-const std::string INDEX_FILE = "index.txt";
+const std::string INDEX_FILE = "positional_index.txt";
+
 
 
 int main() {
@@ -232,168 +249,129 @@ int main() {
 
     int docID = 0;
     std::vector<Document> documents;
-    // Document length map
-    // docID -> number of valid tokens in the document
+
+    // Document length:
+    // docID -> number of valid (non-stopword) tokens
     std::unordered_map<int, int> docLength;
 
-    
-    // Inverted Index
-    // Maps each word to a map of document IDs and term frequencies
-    // Example: "learning" -> { 0:3, 2:1 }
+    // Positional Index (NEW DATA STRUCTURE)
+    // word -> { docID -> [pos1, pos2, ...] }
+    std::unordered_map<
+        std::string,
+        std::unordered_map<int, std::vector<int>>
+    > positionalIndex;
 
-    std::unordered_map< std::string, std::unordered_map<int, int>> invertedIndex;
-
-    // Try loading existing index from disk
-    loadIndex(INDEX_FILE, invertedIndex);
-
-    bool indexLoaded = !invertedIndex.empty();
-
-
-    // Maps document ID to file path (for clean output)
+    // Map document ID to file path (for output)
     std::unordered_map<int, std::string> docIdToName;
 
+    /* ===============================
+       BUILD POSITIONAL INDEX
+       =============================== */
     for (const auto& entry : fs::directory_iterator(dataDir)) {
         if (!entry.is_regular_file()) continue;
 
         std::string filePath = entry.path().string();
-
         std::ifstream file(entry.path());
-        if (!file.is_open()) {
-            std::cerr << "Failed to open " << filePath << "\n";
-            continue;
-        }
+        if (!file.is_open()) continue;
 
         std::string content(
             (std::istreambuf_iterator<char>(file)),
             std::istreambuf_iterator<char>()
         );
 
-        if (content.empty()) {
-           std::cout << "DocID " << docID << " -> " << filePath << " (empty file)\n";
-           documents.push_back({docID, filePath, content});
-           docIdToName[docID] = filePath;
-           docID++;
-           continue;
-         }
-
-        // Validation: docID assignment
-        std::cout << "DocID " << docID << " -> " << filePath << "\n";
-
         documents.push_back({docID, filePath, content});
         docIdToName[docID] = filePath;
-
-
-        // STEP 3 + STEP 4 validation
-        auto tokens = tokenize(content);
         docLength[docID] = 0;
 
-        
+        auto tokens = tokenize(content);
+
+        int position = 0;  // absolute token position in document
         for (const auto& token : tokens) {
-            // Skip stop words
-            if (stopWords.find(token) != stopWords.end()) {
-                 continue;
+
+            // Skip stop words, but still advance position
+            if (!stopWords.count(token)) {
+                // Store exact position of token
+                positionalIndex[token][docID].push_back(position);
+
+                // Count valid token for TF normalization
+                docLength[docID]++;
             }
 
-            // Increment term frequency
-            invertedIndex[token][docID]++;
-
-             // Increment document length (valid token)
-             // Count number of valid (non-stopword) tokens in this document
-             // Used later for TF-IDF normalization
-
-             docLength[docID]++;
-       }
+            position++; // always increment position
+        }
 
         docID++;
-
     }
 
-    if (!indexLoaded) {
-        saveIndex(INDEX_FILE, invertedIndex);
+    /* ===============================
+       QUERY + TF-IDF RANKING + TOP-K
+       =============================== */
+
+    std::cout << "\nEnter query: ";
+    std::string query;
+    std::getline(std::cin, query);
+
+    if (query.empty()) {
+        std::cout << "Empty query. Please enter one or more words.\n";
+        return 0;
     }
 
-  
+    auto queryTokens = tokenize(query);
 
- // STEP 6: Multi-word Query Support + TF-IDF Ranking + Top-K
-// --------------------------------------------------------
-// - Tokenize user query
-// - Remove stop words
-// - Remove duplicate query terms
-// - Compute TF-IDF scores
-// - Display ranked Top-K results (configurable)
-
-std::cout << "\nEnter query: ";
-std::string query;
-std::getline(std::cin, query);
-
-// Handle empty query
-if (query.empty()) {
-    std::cout << "Empty query. Please enter one or more words.\n";
-    return 0;
-}
-
-// Tokenize query using same tokenizer as documents
-auto queryTokens = tokenize(query);
-
-// Remove stop words and duplicate query terms
-std::unordered_set<std::string> filteredQueryTokens;
-for (const auto& token : queryTokens) {
-    if (stopWords.find(token) == stopWords.end()) {
-        filteredQueryTokens.insert(token);
+    // Remove stop words and duplicates
+    std::unordered_set<std::string> filteredQueryTokens;
+    for (const auto& token : queryTokens) {
+        if (!stopWords.count(token)) {
+            filteredQueryTokens.insert(token);
+        }
     }
-}
 
-// Handle case: all query terms removed
-if (filteredQueryTokens.empty()) {
-    std::cout << "No valid query terms after filtering stop words.\n";
-    return 0;
-}
-
-// Ask for Top-K
-std::cout << "Enter K (press Enter for default 5): ";
-std::string kInput;
-std::getline(std::cin, kInput);
-
-int K = 5; // default
-if (!kInput.empty()) {
-    try {
-        K = std::stoi(kInput);
-        if (K <= 0) K = 5;
-    } catch (...) {
-        K = 5;
+    if (filteredQueryTokens.empty()) {
+        std::cout << "No valid query terms after filtering stop words.\n";
+        return 0;
     }
-}
 
-// Convert query tokens to vector (required by ranker)
-std::vector<std::string> queryTokenVector(
-    filteredQueryTokens.begin(),
-    filteredQueryTokens.end()
-);
+    // Read Top-K
+    std::cout << "Enter K (press Enter for default 5): ";
+    std::string kInput;
+    std::getline(std::cin, kInput);
 
-// Compute ranked TF-IDF results (Top-K)
-auto rankedResults = rankDocuments(
-    queryTokenVector,
-    invertedIndex,
-    docLength,
-    documents.size(),
-    K
-);
-
-// Display ranked results
-if (rankedResults.empty()) {
-    std::cout << "No query terms found in the index.\n";
-}
-else {
-    int rank = 1;
-    for (const auto& p : rankedResults) {
-        std::cout << "Rank " << rank << ": "
-                  << docIdToName[p.first]
-                  << " (score: " << p.second << ")\n";
-        rank++;
+    int K = 5;
+    if (!kInput.empty()) {
+        try {
+            K = std::stoi(kInput);
+            if (K <= 0) K = 5;
+        } catch (...) {
+            K = 5;
+        }
     }
-}
 
+    std::vector<std::string> queryTokenVector(
+        filteredQueryTokens.begin(),
+        filteredQueryTokens.end()
+    );
+
+    // Ranking uses positional index
+    // TF = number of positions = positionalIndex[word][docID].size()
+    auto rankedResults = rankDocuments(
+        queryTokenVector,
+        positionalIndex,
+        docLength,
+        documents.size(),
+        K
+    );
+
+    if (rankedResults.empty()) {
+        std::cout << "No query terms found in the index.\n";
+    } else {
+        int rank = 1;
+        for (const auto& p : rankedResults) {
+            std::cout << "Rank " << rank << ": "
+                      << docIdToName[p.first]
+                      << " (score: " << p.second << ")\n";
+            rank++;
+        }
+    }
 
     return 0;
 }
-
