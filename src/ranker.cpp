@@ -1,43 +1,56 @@
-#include <vector>
-#include <string>
-#include <utility>
+#include "ranker.h"
 #include <cmath>
 
 using std::vector;
 using std::string;
 using std::pair;
+using std::unordered_map;
 
 // Computes Term Frequency (TF)
-// freq   : number of times a term appears in a document
-// docLen : total number of valid tokens in the document
 double computeTF(int freq, int docLen) {
-    if (docLen == 0) return 0.0;  // safety check
+    if (docLen == 0) return 0.0;
     return static_cast<double>(freq) / docLen;
 }
 
-
 // Computes Inverse Document Frequency (IDF)
-// totalDocs    : total number of documents in the corpus
-// docsWithTerm : number of documents containing the term
 double computeIDF(int totalDocs, int docsWithTerm) {
-    if (docsWithTerm == 0) return 0.0;  // safety check
+    if (docsWithTerm == 0) return 0.0;
     return std::log(static_cast<double>(totalDocs) / docsWithTerm);
 }
 
+// Computes TF-IDF scores for query documents
+vector<pair<int,double>> rankDocuments(
+    const vector<string>& queryTokens,
+    const unordered_map<string, unordered_map<int,int>>& invertedIndex,
+    const unordered_map<int,int>& docLength,
+    int totalDocs
+) {
+    unordered_map<int, double> docScores;
 
-// Ranks documents for a given query using TF-IDF
-// queryTokens : normalized, stopword-free query tokens
-// Returns a list of (docID, score) pairs
-vector<pair<int, double>> rankDocuments(vector<string>& queryTokens) {
-    return {}; // TODO: implement ranking logic
+    for (const auto& token : queryTokens) {
+        auto it = invertedIndex.find(token);
+        if (it == invertedIndex.end()) continue;
+
+        const auto& posting = it->second;
+        int docsWithTerm = posting.size();
+        double idf = computeIDF(totalDocs, docsWithTerm);
+
+        for (const auto& docPair : posting) {
+            int docID = docPair.first;
+            int freq  = docPair.second;
+
+            auto lenIt = docLength.find(docID);
+            if (lenIt == docLength.end()) continue;
+
+            double tf = computeTF(freq, lenIt->second);
+            docScores[docID] += tf * idf;
+        }
+    }
+
+    vector<pair<int,double>> results;
+    for (const auto& entry : docScores) {
+        results.emplace_back(entry.first, entry.second);
+    }
+
+    return results;
 }
-
-/*
-#include <iostream>
-
-void testTFIDF() {
-    std::cout << "TF(3, 100) = " << computeTF(3, 100) << "\n";
-    std::cout << "IDF(10, 2) = " << computeIDF(10, 2) << "\n";
-}
-*/
-

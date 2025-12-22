@@ -7,6 +7,8 @@
 #include <cctype>
 #include <unordered_set>
 #include <unordered_map>
+#include "ranker.h"
+
 
 
 namespace fs = std::filesystem;
@@ -312,65 +314,69 @@ int main() {
 
   
 
-   // STEP 6: Multi-word Query Support
-   // --------------------------------
-   // - Tokenize user query
-   // - Remove stop words
-   // - Remove duplicate query terms
-   // - Perform UNION over posting lists
-   // - No ranking at this stage
-   std::cout << "\nEnter query: ";
-   std::string query;
-   std::getline(std::cin, query);
+   // STEP 6: Multi-word Query Support + TF-IDF Scoring
+// ------------------------------------------------
+// - Tokenize user query
+// - Remove stop words
+// - Remove duplicate query terms
+// - Compute TF-IDF scores for matching documents
+// - No ranking / sorting yet (validation only)
 
-   // Handle empty query
-   if (query.empty()) {
-       std::cout << "Empty query. Please enter one or more words.\n";
-       return 0;
-   }
+std::cout << "\nEnter query: ";
+std::string query;
+std::getline(std::cin, query);
 
-   // Tokenize query using same tokenizer as documents
-   auto queryTokens = tokenize(query);
+// Handle empty query
+if (query.empty()) {
+    std::cout << "Empty query. Please enter one or more words.\n";
+    return 0;
+}
 
-   // Remove stop words and duplicate query terms
-   std::unordered_set<std::string> filteredQueryTokens;
-   for (const auto& token : queryTokens) {
-       if (stopWords.find(token) == stopWords.end()) {
-          filteredQueryTokens.insert(token);
-       }
-   }
+// Tokenize query using same tokenizer as documents
+auto queryTokens = tokenize(query);
 
-   // Union of document IDs (ensures uniqueness)
-   std::unordered_set<int> resultDocIDs;
-   bool anyTokenFoundInIndex = false;
-
-   for (const auto& token : filteredQueryTokens) {
-        auto it = invertedIndex.find(token);
-        if (it == invertedIndex.end()) {
-           continue;  // token not in index
-        }
-
-         anyTokenFoundInIndex = true;
-
-         // it->second is: { docID -> term frequency }
-         for (const auto& docPair : it->second) {
-              resultDocIDs.insert(docPair.first);
-         }
+// Remove stop words and duplicate query terms
+std::unordered_set<std::string> filteredQueryTokens;
+for (const auto& token : queryTokens) {
+    if (stopWords.find(token) == stopWords.end()) {
+        filteredQueryTokens.insert(token);
     }
+}
 
-    // Display results
-    if (!anyTokenFoundInIndex) {
-        std::cout << "No query terms found in the index.\n";
+// Handle case: all query terms removed
+if (filteredQueryTokens.empty()) {
+    std::cout << "No valid query terms after filtering stop words.\n";
+    return 0;
+}
+
+// Convert query tokens to vector (required by ranker)
+std::vector<std::string> queryTokenVector(
+    filteredQueryTokens.begin(),
+    filteredQueryTokens.end()
+);
+
+// STEP 🔟 Validation: Compute TF-IDF scores
+auto rankedResults = rankDocuments(
+    queryTokenVector,
+    invertedIndex,
+    docLength,
+    documents.size()
+);
+
+// Display TF-IDF scores (debug validation)
+if (rankedResults.empty()) {
+    std::cout << "No query terms found in the index.\n";
+}
+else {
+    std::cout << "TF-IDF Scores:\n";
+    for (const auto& p : rankedResults) {
+        std::cout << "Doc " << p.first
+                  << " (" << docIdToName[p.first] << ")"
+                  << " score = " << p.second << "\n";
     }
-    else if (resultDocIDs.empty()) {
-             std::cout << "No documents found.\n";
-    }
-    else {
-        std::cout << "Found in documents (" << resultDocIDs.size() << "):\n";
-        for (int docId : resultDocIDs) {
-             std::cout << "- " << docIdToName[docId] << "\n";
-        }
-    }
+}
+
+     
 
 
 
