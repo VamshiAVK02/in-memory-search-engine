@@ -254,14 +254,14 @@ int main() {
     // docID -> number of valid (non-stopword) tokens
     std::unordered_map<int, int> docLength;
 
-    // Positional Index (NEW DATA STRUCTURE)
+    // Positional Index
     // word -> { docID -> [pos1, pos2, ...] }
     std::unordered_map<
         std::string,
         std::unordered_map<int, std::vector<int>>
     > positionalIndex;
 
-    // Map document ID to file path (for output)
+    // Map document ID to file path
     std::unordered_map<int, std::string> docIdToName;
 
     /* ===============================
@@ -285,23 +285,21 @@ int main() {
 
         auto tokens = tokenize(content);
 
-        int position = 0;  // absolute token position in document
+        int position = 0;  // valid-token position only
         for (const auto& token : tokens) {
 
-            // Skip stop words, but still advance position
-            if (!stopWords.count(token)) {
-                // Store exact position of token
-                positionalIndex[token][docID].push_back(position);
-
-                // Count valid token for TF normalization
-                docLength[docID]++;
+            if (stopWords.count(token)) {
+                continue;
             }
 
-            position++; // always increment position
+            positionalIndex[token][docID].push_back(position);
+            docLength[docID]++;
+            position++;
         }
 
         docID++;
     }
+
 
     /* ===============================
        QUERY + TF-IDF RANKING + TOP-K
@@ -318,7 +316,6 @@ int main() {
 
     auto queryTokens = tokenize(query);
 
-    // Remove stop words and duplicates
     std::unordered_set<std::string> filteredQueryTokens;
     for (const auto& token : queryTokens) {
         if (!stopWords.count(token)) {
@@ -331,7 +328,6 @@ int main() {
         return 0;
     }
 
-    // Read Top-K
     std::cout << "Enter K (press Enter for default 5): ";
     std::string kInput;
     std::getline(std::cin, kInput);
@@ -351,8 +347,6 @@ int main() {
         filteredQueryTokens.end()
     );
 
-    // Ranking uses positional index
-    // TF = number of positions = positionalIndex[word][docID].size()
     auto rankedResults = rankDocuments(
         queryTokenVector,
         positionalIndex,
@@ -375,3 +369,4 @@ int main() {
 
     return 0;
 }
+
