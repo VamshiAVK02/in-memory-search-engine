@@ -301,71 +301,102 @@ int main() {
     }
 
 
-    /* ===============================
-       QUERY + TF-IDF RANKING + TOP-K
-       =============================== */
+   /* ===============================
+   QUERY + TF-IDF RANKING + TOP-K
+   =============================== */
 
-    std::cout << "\nEnter query: ";
-    std::string query;
-    std::getline(std::cin, query);
+std::cout << "\nEnter query: ";
+std::string query;
+std::getline(std::cin, query);
 
-    if (query.empty()) {
-        std::cout << "Empty query. Please enter one or more words.\n";
-        return 0;
+if (query.empty()) {
+    std::cout << "Empty query. Please enter one or more words.\n";
+    return 0;
+}
+
+/* ===============================
+   STEP 4: Detect Phrase Query
+   =============================== */
+bool isPhraseQuery = false;
+
+// Phrase query if wrapped in quotes
+if (query.size() >= 2 && query.front() == '"' && query.back() == '"') {
+    isPhraseQuery = true;
+
+    // Strip surrounding quotes
+    query = query.substr(1, query.size() - 2);
+}
+
+// Tokenize AFTER stripping quotes
+auto queryTokens = tokenize(query);
+
+// Remove stop words and duplicates
+std::unordered_set<std::string> filteredQueryTokens;
+for (const auto& token : queryTokens) {
+    if (!stopWords.count(token)) {
+        filteredQueryTokens.insert(token);
     }
+}
 
-    auto queryTokens = tokenize(query);
+if (filteredQueryTokens.empty()) {
+    std::cout << "No valid query terms after filtering stop words.\n";
+    return 0;
+}
 
-    std::unordered_set<std::string> filteredQueryTokens;
-    for (const auto& token : queryTokens) {
-        if (!stopWords.count(token)) {
-            filteredQueryTokens.insert(token);
-        }
+// Optional validation (REMOVE after testing)
+/*
+if (isPhraseQuery) {
+    std::cout << "[Phrase query detected]\n";
+} else {
+    std::cout << "[Normal ranked query]\n";
+}
+*/
+
+// Read Top-K
+std::cout << "Enter K (press Enter for default 5): ";
+std::string kInput;
+std::getline(std::cin, kInput);
+
+int K = 5;
+if (!kInput.empty()) {
+    try {
+        K = std::stoi(kInput);
+        if (K <= 0) K = 5;
+    } catch (...) {
+        K = 5;
     }
+}
 
-    if (filteredQueryTokens.empty()) {
-        std::cout << "No valid query terms after filtering stop words.\n";
-        return 0;
+// Convert query tokens to vector
+std::vector<std::string> queryTokenVector(
+    filteredQueryTokens.begin(),
+    filteredQueryTokens.end()
+);
+
+/* ===============================
+   NORMAL RANKED QUERY PATH
+   (Phrase matching comes next step)
+   =============================== */
+auto rankedResults = rankDocuments(
+    queryTokenVector,
+    positionalIndex,
+    docLength,
+    documents.size(),
+    K
+);
+
+if (rankedResults.empty()) {
+    std::cout << "No query terms found in the index.\n";
+} else {
+    int rank = 1;
+    for (const auto& p : rankedResults) {
+        std::cout << "Rank " << rank << ": "
+                  << docIdToName[p.first]
+                  << " (score: " << p.second << ")\n";
+        rank++;
     }
+}
 
-    std::cout << "Enter K (press Enter for default 5): ";
-    std::string kInput;
-    std::getline(std::cin, kInput);
-
-    int K = 5;
-    if (!kInput.empty()) {
-        try {
-            K = std::stoi(kInput);
-            if (K <= 0) K = 5;
-        } catch (...) {
-            K = 5;
-        }
-    }
-
-    std::vector<std::string> queryTokenVector(
-        filteredQueryTokens.begin(),
-        filteredQueryTokens.end()
-    );
-
-    auto rankedResults = rankDocuments(
-        queryTokenVector,
-        positionalIndex,
-        docLength,
-        documents.size(),
-        K
-    );
-
-    if (rankedResults.empty()) {
-        std::cout << "No query terms found in the index.\n";
-    } else {
-        int rank = 1;
-        for (const auto& p : rankedResults) {
-            std::cout << "Rank " << rank << ": "
-                      << docIdToName[p.first]
-                      << " (score: " << p.second << ")\n";
-            rank++;
-        }
-    }
 
     return 0;
 }
