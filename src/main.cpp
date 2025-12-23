@@ -420,13 +420,13 @@ if (isPhraseQuery && orderedQueryTokens.size() >= 2) {
     if (matchingDocs.empty()) {
         std::cout << "No documents match the phrase.\n";
     } else {
-        std::cout << "Phrase matches found:\n";
+        std::cout << "Phrase match found in:\n";
         for (int docID : matchingDocs) {
             std::cout << "- " << docIdToName[docID] << "\n";
         }
     }
 
-    return 0;  // IMPORTANT: stop here for phrase queries
+    return 0;  // ✅ stop here for phrase queries (ignore TF-IDF)
 }
 
 
