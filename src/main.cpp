@@ -366,33 +366,53 @@ if (orderedQueryTokens.empty()) {
 }
 
 /* ===============================
-   STEP 5: PHRASE MATCHING (2 WORDS)
+   STEP 6: PHRASE MATCHING (MULTI-WORD)
    =============================== */
-if (isPhraseQuery && orderedQueryTokens.size() == 2) {
+if (isPhraseQuery && orderedQueryTokens.size() >= 2) {
 
-    const std::string& w1 = orderedQueryTokens[0];
-    const std::string& w2 = orderedQueryTokens[1];
+    std::vector<int> matchingDocs;
 
-    auto it1 = positionalIndex.find(w1);
-    auto it2 = positionalIndex.find(w2);
+    // Start from documents containing the FIRST word
+    const std::string& firstWord = orderedQueryTokens[0];
+    auto itFirst = positionalIndex.find(firstWord);
 
-    if (it1 == positionalIndex.end() || it2 == positionalIndex.end()) {
+    if (itFirst == positionalIndex.end()) {
         std::cout << "No documents match the phrase.\n";
         return 0;
     }
 
-    std::vector<int> matchingDocs;
-
-    for (const auto& docPair : it1->second) {
+    // For each candidate document
+    for (const auto& docPair : itFirst->second) {
         int docID = docPair.first;
+        bool matchesAll = true;
 
-        auto itDoc2 = it2->second.find(docID);
-        if (itDoc2 == it2->second.end()) continue;
+        // Check all consecutive word pairs
+        for (size_t i = 0; i + 1 < orderedQueryTokens.size(); i++) {
 
-        const auto& p1 = docPair.second;
-        const auto& p2 = itDoc2->second;
+            const std::string& w1 = orderedQueryTokens[i];
+            const std::string& w2 = orderedQueryTokens[i + 1];
 
-        if (phraseMatchTwoWords(p1, p2)) {
+            auto it1 = positionalIndex.find(w1);
+            auto it2 = positionalIndex.find(w2);
+
+            if (it1 == positionalIndex.end() ||
+                it2 == positionalIndex.end() ||
+                it1->second.find(docID) == it1->second.end() ||
+                it2->second.find(docID) == it2->second.end()) {
+                matchesAll = false;
+                break;
+            }
+
+            const auto& p1 = it1->second.at(docID);
+            const auto& p2 = it2->second.at(docID);
+
+            if (!phraseMatchTwoWords(p1, p2)) {
+                matchesAll = false;
+                break;
+            }
+        }
+
+        if (matchesAll) {
             matchingDocs.push_back(docID);
         }
     }
@@ -408,6 +428,7 @@ if (isPhraseQuery && orderedQueryTokens.size() == 2) {
 
     return 0;  // IMPORTANT: stop here for phrase queries
 }
+
 
 /* ===============================
    NORMAL TF-IDF RANKED QUERY
