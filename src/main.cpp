@@ -337,9 +337,12 @@ int main() {
 
     // Map document ID to file path
     std::unordered_map<int, std::string> docIdToName; 
-    
+
+
+
 /* ===============================
-   BUILD POSITIONAL INDEX (PARALLEL)
+   BUILD POSITIONAL INDEX
+   PERFORMANCE MEASUREMENT
    =============================== */
 
 // Decide number of threads
@@ -350,11 +353,9 @@ if (numThreads == 0) {
 
 std::cout << "Using " << numThreads << " threads for indexing\n";
 
-// --------------------------------------------------
-// 1) Load documents (single-threaded I/O)
-// --------------------------------------------------
-auto indexStart = std::chrono::high_resolution_clock::now();
-
+/* --------------------------------------------------
+   1) Load documents (single-threaded I/O)
+   -------------------------------------------------- */
 for (const auto& entry : fs::directory_iterator(dataDir)) {
     if (!entry.is_regular_file()) continue;
 
@@ -374,11 +375,46 @@ for (const auto& entry : fs::directory_iterator(dataDir)) {
     docID++;
 }
 
-// --------------------------------------------------
-// 2) Parallel indexing (CPU-bound)
-// --------------------------------------------------
+/* --------------------------------------------------
+   2) SINGLE-THREADED INDEXING (BASELINE)
+   -------------------------------------------------- */
+auto singleStart = std::chrono::high_resolution_clock::now();
+
+indexDocuments(
+    0,
+    documents.size(),
+    documents,
+    positionalIndex,
+    docLength
+);
+
+auto singleEnd = std::chrono::high_resolution_clock::now();
+
+long long singleThreadTimeMs =
+    std::chrono::duration_cast<std::chrono::milliseconds>(
+        singleEnd - singleStart
+    ).count();
+
+std::cout << "Indexing time (single-thread): "
+          << singleThreadTimeMs << " ms\n";
+
+/* --------------------------------------------------
+   3) CLEAR INDEX BEFORE MULTI-THREAD RUN
+   -------------------------------------------------- */
+positionalIndex.clear();
+docLength.clear();
+
+for (size_t i = 0; i < documents.size(); i++) {
+    docLength[i] = 0;
+}
+
+/* --------------------------------------------------
+   4) MULTI-THREADED INDEXING
+   -------------------------------------------------- */
+auto multiStart = std::chrono::high_resolution_clock::now();
+
 int N = documents.size();
-int chunkSize = (N + numThreads - 1) / numThreads; // safe ceil division
+int chunkSize = (N + numThreads - 1) / numThreads;
 
 std::vector<std::thread> threads;
 
@@ -386,7 +422,7 @@ for (unsigned int i = 0; i < numThreads; i++) {
     int start = i * chunkSize;
     int end   = std::min(start + chunkSize, N);
 
-    if (start >= end) break; // safety
+    if (start >= end) break;
 
     threads.emplace_back(
         indexDocuments,
@@ -402,18 +438,30 @@ for (auto& t : threads) {
     t.join();
 }
 
-// --------------------------------------------------
-// 3) Timing end
-// --------------------------------------------------
-auto indexEnd = std::chrono::high_resolution_clock::now();
+auto multiEnd = std::chrono::high_resolution_clock::now();
 
-long long indexingTimeMs =
+long long multiThreadTimeMs =
     std::chrono::duration_cast<std::chrono::milliseconds>(
-        indexEnd - indexStart
+        multiEnd - multiStart
     ).count();
 
-std::cout << "\nIndexing time (parallel): "
-          << indexingTimeMs << " ms\n";
+std::cout << "Indexing time (multi-threaded): "
+          << multiThreadTimeMs << " ms\n";
+
+/* --------------------------------------------------
+   5) SPEEDUP
+   -------------------------------------------------- */
+if (multiThreadTimeMs > 0) {
+    double speedup =
+        static_cast<double>(singleThreadTimeMs) /
+        static_cast<double>(multiThreadTimeMs);
+
+    std::cout << "Speedup: " << speedup << "x\n";
+}
+
+if (singleThreadTimeMs == 0 || multiThreadTimeMs == 0) {
+    std::cout << "(Note: dataset is small; indexing completes in < 1 ms)\n";
+}
 
 
 
