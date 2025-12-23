@@ -263,6 +263,46 @@ bool phraseMatchTwoWords(
     return false; // no phrase match
 }
 
+void indexDocuments(
+    int start,
+    int end,
+    const std::vector<Document>& documents,
+    std::unordered_map<std::string,
+        std::unordered_map<int, std::vector<int>>>& positionalIndex,
+    std::unordered_map<int, int>& docLength
+);
+
+
+void indexDocuments(
+    int start,
+    int end,
+    const std::vector<Document>& documents,
+    std::unordered_map<std::string,
+        std::unordered_map<int, std::vector<int>>>& positionalIndex,
+    std::unordered_map<int, int>& docLength
+) {
+    for (int docID = start; docID < end; docID++) {
+
+        const std::string& content = documents[docID].content;
+        if (content.empty()) continue;
+
+        auto tokens = tokenize(content);
+
+        int position = 0;
+        for (const auto& token : tokens) {
+            if (stopWords.count(token)) {
+                continue;
+            }
+
+            positionalIndex[token][docID].push_back(position);
+            docLength[docID]++;
+            position++;
+        }
+    }
+}
+
+
+
 int main() {
     fs::path dataDir = "data";
 
@@ -295,38 +335,37 @@ int main() {
 
        auto indexStart = std::chrono::high_resolution_clock::now();
 
-    for (const auto& entry : fs::directory_iterator(dataDir)) {
-        if (!entry.is_regular_file()) continue;
+   for (const auto& entry : fs::directory_iterator(dataDir)) {
+    if (!entry.is_regular_file()) continue;
 
-        std::string filePath = entry.path().string();
-        std::ifstream file(entry.path());
-        if (!file.is_open()) continue;
+    std::string filePath = entry.path().string();
+    std::ifstream file(entry.path());
+    if (!file.is_open()) continue;
 
-        std::string content(
-            (std::istreambuf_iterator<char>(file)),
-            std::istreambuf_iterator<char>()
-        );
+    std::string content(
+        (std::istreambuf_iterator<char>(file)),
+        std::istreambuf_iterator<char>()
+    );
 
-        documents.push_back({docID, filePath, content});
-        docIdToName[docID] = filePath;
-        docLength[docID] = 0;
+    // Store document metadata and content
+    documents.push_back({docID, filePath, content});
+    docIdToName[docID] = filePath;
 
-        auto tokens = tokenize(content);
+    // Initialize document length (will be updated in worker)
+    docLength[docID] = 0;
 
-        int position = 0;  // valid-token position only
-        for (const auto& token : tokens) {
+    docID++;
+}
 
-            if (stopWords.count(token)) {
-                continue;
-            }
+// Single-threaded indexing (temporary)
+indexDocuments(
+    0,
+    documents.size(),
+    documents,
+    positionalIndex,
+    docLength
+);
 
-            positionalIndex[token][docID].push_back(position);
-            docLength[docID]++;
-            position++;
-        }
-
-        docID++;
-    }
 
     auto indexEnd = std::chrono::high_resolution_clock::now();
 
@@ -337,6 +376,7 @@ long long indexingTimeMs =
 
 std::cout << "\nIndexing time (single-thread): "
           << indexingTimeMs << " ms\n";
+
 
 
 /* ===============================
