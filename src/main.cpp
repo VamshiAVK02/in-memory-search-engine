@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include "ranker.h"
 #include <chrono>
+#include <mutex>
 
 
 
@@ -263,6 +264,9 @@ bool phraseMatchTwoWords(
     return false; // no phrase match
 }
 
+// Mutex to protect shared index structures
+std::mutex indexMutex;
+
 void indexDocuments(
     int start,
     int end,
@@ -290,17 +294,22 @@ void indexDocuments(
 
         int position = 0;
         for (const auto& token : tokens) {
+
             if (stopWords.count(token)) {
                 continue;
             }
 
-            positionalIndex[token][docID].push_back(position);
-            docLength[docID]++;
+            // 🔒 Critical section: shared writes
+            {
+                std::lock_guard<std::mutex> lock(indexMutex);
+                positionalIndex[token][docID].push_back(position);
+                docLength[docID]++;
+            }
+
             position++;
         }
     }
 }
-
 
 
 int main() {
