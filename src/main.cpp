@@ -9,6 +9,7 @@
 #include <unordered_set>
 #include <unordered_map>
 #include "ranker.h"
+#include <chrono>
 
 
 
@@ -285,11 +286,15 @@ int main() {
     > positionalIndex;
 
     // Map document ID to file path
-    std::unordered_map<int, std::string> docIdToName;
+    std::unordered_map<int, std::string> docIdToName; 
+
 
     /* ===============================
        BUILD POSITIONAL INDEX
        =============================== */
+
+       auto indexStart = std::chrono::high_resolution_clock::now();
+
     for (const auto& entry : fs::directory_iterator(dataDir)) {
         if (!entry.is_regular_file()) continue;
 
@@ -322,6 +327,16 @@ int main() {
 
         docID++;
     }
+
+    auto indexEnd = std::chrono::high_resolution_clock::now();
+
+long long indexingTimeMs =
+    std::chrono::duration_cast<std::chrono::milliseconds>(
+        indexEnd - indexStart
+    ).count();
+
+std::cout << "\nIndexing time (single-thread): "
+          << indexingTimeMs << " ms\n";
 
 
 /* ===============================
