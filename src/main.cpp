@@ -268,6 +268,15 @@ bool phraseMatchTwoWords(
 // Mutex to protect shared index structures
 std::mutex indexMutex;
 
+/*
+NOTE ON FALSE SHARING:
+- Multiple threads may update nearby memory locations (e.g., docLength entries).
+- This can cause cache line contention known as "false sharing".
+- Not optimized here because workload is coarse-grained and impact is minimal.
+- Would require padding or per-thread counters to eliminate fully.
+*/
+
+
 void indexDocuments(
     int start,
     int end,
@@ -291,6 +300,12 @@ void indexDocuments(
     >& globalIndex,
     std::unordered_map<int, int>& globalDocLength
 ) {
+ 
+    // Thread-local index to avoid lock contention.
+// Each thread builds its own partial index without synchronization.
+// This significantly improves performance compared to locking per token.
+
+
     // Thread-local structures
     std::unordered_map<
         std::string,
@@ -317,6 +332,10 @@ void indexDocuments(
     }
 
     // Merge into global structures (single lock)
+    // Merge local index into global index.
+// This is the ONLY critical section.
+// Lock is held briefly, once per thread, instead of once per token.
+
     {
         std::lock_guard<std::mutex> lock(indexMutex);
 
@@ -377,6 +396,23 @@ int main() {
    BUILD POSITIONAL INDEX
    PERFORMANCE MEASUREMENT
    =============================== */
+
+   /* ============================================================
+   INDEX CONSTRUCTION (MULTI-THREADED)
+
+   Design choice:
+   - Parallelism is applied per-document, not per-word.
+
+   Why per-document parallelism?
+   - Each document can be tokenized independently.
+   - Avoids contention on shared structures during parsing.
+   - Scales well with number of documents and CPU cores.
+
+   We deliberately avoid per-word parallelism because:
+   - Words are highly shared across documents.
+   - Fine-grained locking would destroy performance.
+   ============================================================ */
+
 
 // Decide number of threads
 unsigned int numThreads = std::thread::hardware_concurrency();
