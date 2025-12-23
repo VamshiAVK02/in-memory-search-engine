@@ -237,7 +237,30 @@ void loadIndex(
 
 const std::string INDEX_FILE = "positional_index.txt";
 
+bool phraseMatchTwoWords(
+    const std::vector<int>& p1,
+    const std::vector<int>& p2
+);
 
+bool phraseMatchTwoWords(
+    const std::vector<int>& p1,
+    const std::vector<int>& p2
+) {
+    int i = 0;
+    int j = 0;
+
+    while (i < p1.size() && j < p2.size()) {
+        if (p2[j] - p1[i] == 1) {
+            return true;  // exact phrase match found
+        } else if (p2[j] > p1[i]) {
+            i++;
+        } else {
+            j++;
+        }
+    }
+
+    return false; // no phrase match
+}
 
 int main() {
     fs::path dataDir = "data";
@@ -301,7 +324,7 @@ int main() {
     }
 
 
-   /* ===============================
+/* ===============================
    QUERY + TF-IDF RANKING + TOP-K
    =============================== */
 
@@ -319,38 +342,87 @@ if (query.empty()) {
    =============================== */
 bool isPhraseQuery = false;
 
-// Phrase query if wrapped in quotes
 if (query.size() >= 2 && query.front() == '"' && query.back() == '"') {
     isPhraseQuery = true;
-
-    // Strip surrounding quotes
-    query = query.substr(1, query.size() - 2);
+    query = query.substr(1, query.size() - 2);  // strip quotes
 }
 
 // Tokenize AFTER stripping quotes
 auto queryTokens = tokenize(query);
 
-// Remove stop words and duplicates
-std::unordered_set<std::string> filteredQueryTokens;
+/* ===============================
+   PRESERVE ORDER FOR PHRASES
+   =============================== */
+std::vector<std::string> orderedQueryTokens;
 for (const auto& token : queryTokens) {
     if (!stopWords.count(token)) {
-        filteredQueryTokens.insert(token);
+        orderedQueryTokens.push_back(token);
     }
 }
 
-if (filteredQueryTokens.empty()) {
+if (orderedQueryTokens.empty()) {
     std::cout << "No valid query terms after filtering stop words.\n";
     return 0;
 }
 
-// Optional validation (REMOVE after testing)
-/*
-if (isPhraseQuery) {
-    std::cout << "[Phrase query detected]\n";
-} else {
-    std::cout << "[Normal ranked query]\n";
+/* ===============================
+   STEP 5: PHRASE MATCHING (2 WORDS)
+   =============================== */
+if (isPhraseQuery && orderedQueryTokens.size() == 2) {
+
+    const std::string& w1 = orderedQueryTokens[0];
+    const std::string& w2 = orderedQueryTokens[1];
+
+    auto it1 = positionalIndex.find(w1);
+    auto it2 = positionalIndex.find(w2);
+
+    if (it1 == positionalIndex.end() || it2 == positionalIndex.end()) {
+        std::cout << "No documents match the phrase.\n";
+        return 0;
+    }
+
+    std::vector<int> matchingDocs;
+
+    for (const auto& docPair : it1->second) {
+        int docID = docPair.first;
+
+        auto itDoc2 = it2->second.find(docID);
+        if (itDoc2 == it2->second.end()) continue;
+
+        const auto& p1 = docPair.second;
+        const auto& p2 = itDoc2->second;
+
+        if (phraseMatchTwoWords(p1, p2)) {
+            matchingDocs.push_back(docID);
+        }
+    }
+
+    if (matchingDocs.empty()) {
+        std::cout << "No documents match the phrase.\n";
+    } else {
+        std::cout << "Phrase matches found:\n";
+        for (int docID : matchingDocs) {
+            std::cout << "- " << docIdToName[docID] << "\n";
+        }
+    }
+
+    return 0;  // IMPORTANT: stop here for phrase queries
 }
-*/
+
+/* ===============================
+   NORMAL TF-IDF RANKED QUERY
+   =============================== */
+
+// Deduplicate query terms ONLY for ranking
+std::unordered_set<std::string> dedupedTokens(
+    orderedQueryTokens.begin(),
+    orderedQueryTokens.end()
+);
+
+std::vector<std::string> queryTokenVector(
+    dedupedTokens.begin(),
+    dedupedTokens.end()
+);
 
 // Read Top-K
 std::cout << "Enter K (press Enter for default 5): ";
@@ -367,16 +439,6 @@ if (!kInput.empty()) {
     }
 }
 
-// Convert query tokens to vector
-std::vector<std::string> queryTokenVector(
-    filteredQueryTokens.begin(),
-    filteredQueryTokens.end()
-);
-
-/* ===============================
-   NORMAL RANKED QUERY PATH
-   (Phrase matching comes next step)
-   =============================== */
 auto rankedResults = rankDocuments(
     queryTokenVector,
     positionalIndex,
