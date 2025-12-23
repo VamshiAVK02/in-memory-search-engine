@@ -11,6 +11,7 @@
 #include "ranker.h"
 #include <chrono>
 #include <mutex>
+#include <thread>
 
 
 
@@ -336,15 +337,25 @@ int main() {
 
     // Map document ID to file path
     std::unordered_map<int, std::string> docIdToName; 
+    
+/* ===============================
+   BUILD POSITIONAL INDEX (PARALLEL)
+   =============================== */
 
+// Decide number of threads
+unsigned int numThreads = std::thread::hardware_concurrency();
+if (numThreads == 0) {
+    numThreads = 4;  // fallback
+}
 
-    /* ===============================
-       BUILD POSITIONAL INDEX
-       =============================== */
+std::cout << "Using " << numThreads << " threads for indexing\n";
 
-       auto indexStart = std::chrono::high_resolution_clock::now();
+// --------------------------------------------------
+// 1) Load documents (single-threaded I/O)
+// --------------------------------------------------
+auto indexStart = std::chrono::high_resolution_clock::now();
 
-   for (const auto& entry : fs::directory_iterator(dataDir)) {
+for (const auto& entry : fs::directory_iterator(dataDir)) {
     if (!entry.is_regular_file()) continue;
 
     std::string filePath = entry.path().string();
@@ -356,35 +367,54 @@ int main() {
         std::istreambuf_iterator<char>()
     );
 
-    // Store document metadata and content
     documents.push_back({docID, filePath, content});
     docIdToName[docID] = filePath;
-
-    // Initialize document length (will be updated in worker)
     docLength[docID] = 0;
 
     docID++;
 }
 
-// Single-threaded indexing (temporary)
-indexDocuments(
-    0,
-    documents.size(),
-    documents,
-    positionalIndex,
-    docLength
-);
+// --------------------------------------------------
+// 2) Parallel indexing (CPU-bound)
+// --------------------------------------------------
+int N = documents.size();
+int chunkSize = (N + numThreads - 1) / numThreads; // safe ceil division
 
+std::vector<std::thread> threads;
 
-    auto indexEnd = std::chrono::high_resolution_clock::now();
+for (unsigned int i = 0; i < numThreads; i++) {
+    int start = i * chunkSize;
+    int end   = std::min(start + chunkSize, N);
+
+    if (start >= end) break; // safety
+
+    threads.emplace_back(
+        indexDocuments,
+        start,
+        end,
+        std::cref(documents),
+        std::ref(positionalIndex),
+        std::ref(docLength)
+    );
+}
+
+for (auto& t : threads) {
+    t.join();
+}
+
+// --------------------------------------------------
+// 3) Timing end
+// --------------------------------------------------
+auto indexEnd = std::chrono::high_resolution_clock::now();
 
 long long indexingTimeMs =
     std::chrono::duration_cast<std::chrono::milliseconds>(
         indexEnd - indexStart
     ).count();
 
-std::cout << "\nIndexing time (single-thread): "
+std::cout << "\nIndexing time (parallel): "
           << indexingTimeMs << " ms\n";
+
 
 
 
