@@ -18,3 +18,14 @@ unordered_set<string> stopWords;
 // Thread i processes docs:
 // [i * N/T  ...  (i+1) * N/T - 1]
 
+// OLD
+// Each token → lock → write → unlock
+
+// NEW
+// Thread builds localIndex (no locks)
+Thread finishes
+→ lock once
+→ merge localIndex into global index
+→ unlock
+
+

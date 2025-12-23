@@ -272,45 +272,78 @@ void indexDocuments(
     int start,
     int end,
     const std::vector<Document>& documents,
-    std::unordered_map<std::string,
-        std::unordered_map<int, std::vector<int>>>& positionalIndex,
-    std::unordered_map<int, int>& docLength
+    std::unordered_map<
+        std::string,
+        std::unordered_map<int, std::vector<int>>
+    >& globalIndex,
+    std::unordered_map<int, int>& globalDocLength
 );
+
 
 
 void indexDocuments(
     int start,
     int end,
     const std::vector<Document>& documents,
-    std::unordered_map<std::string,
-        std::unordered_map<int, std::vector<int>>>& positionalIndex,
-    std::unordered_map<int, int>& docLength
+    std::unordered_map<
+        std::string,
+        std::unordered_map<int, std::vector<int>>
+    >& globalIndex,
+    std::unordered_map<int, int>& globalDocLength
 ) {
+    // Thread-local structures
+    std::unordered_map<
+        std::string,
+        std::unordered_map<int, std::vector<int>>
+    > localIndex;
+
+    std::unordered_map<int, int> localDocLength;
+
     for (int docID = start; docID < end; docID++) {
 
         const std::string& content = documents[docID].content;
         if (content.empty()) continue;
 
         auto tokens = tokenize(content);
-
         int position = 0;
+
         for (const auto& token : tokens) {
+            if (stopWords.count(token)) continue;
 
-            if (stopWords.count(token)) {
-                continue;
-            }
-
-            // 🔒 Critical section: shared writes
-            {
-                std::lock_guard<std::mutex> lock(indexMutex);
-                positionalIndex[token][docID].push_back(position);
-                docLength[docID]++;
-            }
-
+            localIndex[token][docID].push_back(position);
+            localDocLength[docID]++;
             position++;
         }
     }
+
+    // Merge into global structures (single lock)
+    {
+        std::lock_guard<std::mutex> lock(indexMutex);
+
+        for (auto& wordEntry : localIndex) {
+            const std::string& word = wordEntry.first;
+
+            for (auto& docEntry : wordEntry.second) {
+                int docID = docEntry.first;
+                auto& positions = docEntry.second;
+
+                auto& globalPositions =
+                    globalIndex[word][docID];
+
+                globalPositions.insert(
+                    globalPositions.end(),
+                    positions.begin(),
+                    positions.end()
+                );
+            }
+        }
+
+        for (auto& dl : localDocLength) {
+            globalDocLength[dl.first] += dl.second;
+        }
+    }
 }
+
 
 
 int main() {
