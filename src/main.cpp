@@ -366,7 +366,7 @@ void indexDocuments(
 
 
 int main() {
-    fs::path dataDir = "data";
+    fs::path dataDir = "data/10k";
 
     if (!fs::exists(dataDir) || !fs::is_directory(dataDir)) {
         std::cerr << "Data directory not found\n";
@@ -392,13 +392,10 @@ int main() {
 
 
 
-/* ===============================
+/* ============================================================
    BUILD POSITIONAL INDEX
    PERFORMANCE MEASUREMENT
-   =============================== */
-
-   /* ============================================================
-   INDEX CONSTRUCTION (MULTI-THREADED)
+   ============================================================
 
    Design choice:
    - Parallelism is applied per-document, not per-word.
@@ -413,7 +410,6 @@ int main() {
    - Fine-grained locking would destroy performance.
    ============================================================ */
 
-
 // Decide number of threads
 unsigned int numThreads = std::thread::hardware_concurrency();
 if (numThreads == 0) {
@@ -423,7 +419,7 @@ if (numThreads == 0) {
 std::cout << "Using " << numThreads << " threads for indexing\n";
 
 /* --------------------------------------------------
-   1) Load documents (single-threaded I/O)
+   1) LOAD DOCUMENTS (SINGLE-THREADED I/O)
    -------------------------------------------------- */
 for (const auto& entry : fs::directory_iterator(dataDir)) {
     if (!entry.is_regular_file()) continue;
@@ -468,7 +464,7 @@ std::cout << "Indexing time (single-thread): "
           << singleThreadTimeMs << " ms\n";
 
 /* --------------------------------------------------
-   3) CLEAR INDEX BEFORE MULTI-THREAD RUN
+   3) RESET INDEX BEFORE MULTI-THREAD RUN
    -------------------------------------------------- */
 positionalIndex.clear();
 docLength.clear();
@@ -482,7 +478,7 @@ for (size_t i = 0; i < documents.size(); i++) {
    -------------------------------------------------- */
 auto multiStart = std::chrono::high_resolution_clock::now();
 
-int N = documents.size();
+int N = static_cast<int>(documents.size());
 int chunkSize = (N + numThreads - 1) / numThreads;
 
 std::vector<std::thread> threads;
@@ -518,19 +514,18 @@ std::cout << "Indexing time (multi-threaded): "
           << multiThreadTimeMs << " ms\n";
 
 /* --------------------------------------------------
-   5) SPEEDUP
+   5) SPEEDUP REPORT
    -------------------------------------------------- */
-if (multiThreadTimeMs > 0) {
+if (singleThreadTimeMs > 0 && multiThreadTimeMs > 0) {
     double speedup =
         static_cast<double>(singleThreadTimeMs) /
         static_cast<double>(multiThreadTimeMs);
 
     std::cout << "Speedup: " << speedup << "x\n";
-}
-
-if (singleThreadTimeMs == 0 || multiThreadTimeMs == 0) {
+} else {
     std::cout << "(Note: dataset is small; indexing completes in < 1 ms)\n";
 }
+
 
 
 
