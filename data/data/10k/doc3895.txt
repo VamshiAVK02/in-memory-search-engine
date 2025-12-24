@@ -1,6 +1,0 @@
-
-_Stubb and Flask mounted on them, and passing additional lashings over
-the anchors there hanging._
-
-“No, Stubb; you may pound that knot there as much as you please, but
-

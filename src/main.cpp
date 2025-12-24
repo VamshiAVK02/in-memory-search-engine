@@ -476,12 +476,6 @@ if (numThreads == 0) {
 std::cout << "Using " << numThreads << " threads for indexing\n";
 
 
-/* ============================================================
-   INDEX BUILD TIMING (I/O + INDEXING)
-   ============================================================ */
-auto indexBuildStart = std::chrono::high_resolution_clock::now();
-
-
 /* ------------------------------------------------------------
    1) LOAD DOCUMENTS (SINGLE-THREADED I/O)
    ------------------------------------------------------------
@@ -520,16 +514,6 @@ for (const auto& entry : fs::directory_iterator(dataDir)) {
    INDEX BUILD BENCHMARK
    (Single-thread vs Multi-thread)
    ============================================================ */
-
-// --------------------------------------------------
-// Decide number of threads
-// --------------------------------------------------
-unsigned int numThreads = std::thread::hardware_concurrency();
-if (numThreads == 0) {
-    numThreads = 4; // fallback
-}
-
-std::cout << "Using " << numThreads << " threads for indexing\n";
 
 // --------------------------------------------------
 // Measure TOTAL index build time (I/O + indexing)

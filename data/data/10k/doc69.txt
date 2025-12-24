@@ -1,6 +1,0 @@
-  HWAL,              _Swedish_.
-  HVALUR,            _Icelandic_.
-  WHALE,             _English_.
-  BALEINE,           _French_.
-  BALLENA,           _Spanish_.
-
