@@ -15,6 +15,8 @@
 
 
 
+
+
 namespace fs = std::filesystem;
 
 struct Document {
@@ -448,6 +450,12 @@ for (const auto& entry : fs::directory_iterator(dataDir)) {
 /* --------------------------------------------------
    2) SINGLE-THREADED INDEXING (BASELINE)
    -------------------------------------------------- */
+positionalIndex.clear();
+docLength.clear();
+for (size_t i = 0; i < documents.size(); i++) {
+    docLength[i] = 0;
+}
+
 auto singleStart = std::chrono::high_resolution_clock::now();
 
 indexDocuments(
@@ -473,7 +481,6 @@ std::cout << "Indexing time (single-thread): "
    -------------------------------------------------- */
 positionalIndex.clear();
 docLength.clear();
-
 for (size_t i = 0; i < documents.size(); i++) {
     docLength[i] = 0;
 }
@@ -491,7 +498,6 @@ std::vector<std::thread> threads;
 for (unsigned int i = 0; i < numThreads; i++) {
     int start = i * chunkSize;
     int end   = std::min(start + chunkSize, N);
-
     if (start >= end) break;
 
     threads.emplace_back(
