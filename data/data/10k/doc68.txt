@@ -1,0 +1,6 @@
+  ϰητος,             _Greek_.
+  CETUS,             _Latin_.
+  WHŒL,              _Anglo-Saxon_.
+  HVALT,             _Danish_.
+  WAL,               _Dutch_.
+
