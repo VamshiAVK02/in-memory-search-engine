@@ -563,6 +563,11 @@ if (query.empty()) {
     return 0;
 }
 
+/* -------------------------------
+   START QUERY TIMER
+   ------------------------------- */
+auto queryStart = std::chrono::high_resolution_clock::now();
+
 /* ===============================
    STEP 4: Detect Phrase Query
    =============================== */
@@ -598,63 +603,63 @@ if (isPhraseQuery && orderedQueryTokens.size() >= 2) {
 
     std::vector<int> matchingDocs;
 
-    // Start from documents containing the FIRST word
     const std::string& firstWord = orderedQueryTokens[0];
     auto itFirst = positionalIndex.find(firstWord);
 
     if (itFirst == positionalIndex.end()) {
         std::cout << "No documents match the phrase.\n";
-        return 0;
-    }
-
-    // For each candidate document
-    for (const auto& docPair : itFirst->second) {
-        int docID = docPair.first;
-        bool matchesAll = true;
-
-        // Check all consecutive word pairs
-        for (size_t i = 0; i + 1 < orderedQueryTokens.size(); i++) {
-
-            const std::string& w1 = orderedQueryTokens[i];
-            const std::string& w2 = orderedQueryTokens[i + 1];
-
-            auto it1 = positionalIndex.find(w1);
-            auto it2 = positionalIndex.find(w2);
-
-            if (it1 == positionalIndex.end() ||
-                it2 == positionalIndex.end() ||
-                it1->second.find(docID) == it1->second.end() ||
-                it2->second.find(docID) == it2->second.end()) {
-                matchesAll = false;
-                break;
-            }
-
-            const auto& p1 = it1->second.at(docID);
-            const auto& p2 = it2->second.at(docID);
-
-            if (!phraseMatchTwoWords(p1, p2)) {
-                matchesAll = false;
-                break;
-            }
-        }
-
-        if (matchesAll) {
-            matchingDocs.push_back(docID);
-        }
-    }
-
-    if (matchingDocs.empty()) {
-        std::cout << "No documents match the phrase.\n";
     } else {
-        std::cout << "Phrase match found in:\n";
-        for (int docID : matchingDocs) {
-            std::cout << "- " << docIdToName[docID] << "\n";
+
+        for (const auto& docPair : itFirst->second) {
+            int docID = docPair.first;
+            bool matchesAll = true;
+
+            for (size_t i = 0; i + 1 < orderedQueryTokens.size(); i++) {
+                const std::string& w1 = orderedQueryTokens[i];
+                const std::string& w2 = orderedQueryTokens[i + 1];
+
+                auto it1 = positionalIndex.find(w1);
+                auto it2 = positionalIndex.find(w2);
+
+                if (it1 == positionalIndex.end() ||
+                    it2 == positionalIndex.end() ||
+                    !it1->second.count(docID) ||
+                    !it2->second.count(docID) ||
+                    !phraseMatchTwoWords(
+                        it1->second.at(docID),
+                        it2->second.at(docID))) {
+                    matchesAll = false;
+                    break;
+                }
+            }
+
+            if (matchesAll) {
+                matchingDocs.push_back(docID);
+            }
+        }
+
+        if (matchingDocs.empty()) {
+            std::cout << "No documents match the phrase.\n";
+        } else {
+            std::cout << "Phrase match found in:\n";
+            for (int docID : matchingDocs) {
+                std::cout << "- " << docIdToName[docID] << "\n";
+            }
         }
     }
 
-    return 0;  // ✅ stop here for phrase queries (ignore TF-IDF)
-}
+    /* -------------------------------
+       END QUERY TIMER (PHRASE)
+       ------------------------------- */
+    auto queryEnd = std::chrono::high_resolution_clock::now();
+    long long queryTimeMs =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            queryEnd - queryStart
+        ).count();
 
+    std::cout << "Query latency: " << queryTimeMs << " ms\n";
+    return 0;
+}
 
 /* ===============================
    NORMAL TF-IDF RANKED QUERY
@@ -705,6 +710,18 @@ if (rankedResults.empty()) {
         rank++;
     }
 }
+
+/* -------------------------------
+   END QUERY TIMER (RANKED)
+   ------------------------------- */
+auto queryEnd = std::chrono::high_resolution_clock::now();
+long long queryTimeMs =
+    std::chrono::duration_cast<std::chrono::milliseconds>(
+        queryEnd - queryStart
+    ).count();
+
+std::cout << "Query latency: " << queryTimeMs << " ms\n";
+
 
 
     return 0;
