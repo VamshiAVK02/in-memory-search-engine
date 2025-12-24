@@ -1,32 +1,60 @@
+// ============================================================
+// Standard library includes
+// ============================================================
 
+// I/O and strings
 #include <iostream>
-#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
 #include <vector>
 #include <cctype>
+
+// Containers
 #include <unordered_set>
 #include <unordered_map>
-#include "ranker.h"
+
+// Filesystem support
+#include <filesystem>
+
+// Timing and concurrency
 #include <chrono>
 #include <mutex>
 #include <thread>
 
-
-
-
+// Project headers
+#include "ranker.h"
 
 namespace fs = std::filesystem;
 
+// ============================================================
+// Document representation
+// ============================================================
+//
+// Represents a single document in the corpus.
+//
+// - id      : unique numeric document identifier
+// - path    : file path on disk
+// - content : full text of the document
+//
+// Documents are loaded once (single-threaded I/O) and then
+// indexed in parallel using per-document parallelism.
+//
 struct Document {
     int id;
     std::string path;
     std::string content;
 };
 
-// STEP 3: Tokenizer
-// -----------------
+
+// ============================================================
+// Tokenizer
+// ============================================================
+//
+// Purpose:
+// - Normalizes text for indexing and querying
+// - Produces consistent tokens across documents and queries
+//
 // Rules:
 // - Converts all characters to lowercase
 // - Treats any non-alphanumeric character as a delimiter
@@ -35,19 +63,22 @@ struct Document {
 //
 // Notes:
 // - Used for both document indexing and query processing
-// - Token positions are preserved by the caller (important for positional index)
-
+// - Token *positions* are tracked by the caller (important for
+//   positional inverted index and phrase queries)
+// - This function itself is stateless and thread-safe
+//
 std::vector<std::string> tokenize(const std::string& text) {
     std::vector<std::string> tokens;
     std::string current;
-    current.reserve(16); // small optimization
+    current.reserve(16);  // Small optimization to reduce reallocations
 
     for (unsigned char ch : text) {
-        char c = std::tolower(ch);
+        char c = static_cast<char>(std::tolower(ch));
 
         if (std::isalnum(c)) {
             current.push_back(c);
         } else {
+            // Delimiter encountered: flush current token
             if (current.size() >= 2) {
                 tokens.push_back(current);
             }
@@ -55,7 +86,7 @@ std::vector<std::string> tokenize(const std::string& text) {
         }
     }
 
-    // Push last token if present
+    // Flush final token if present
     if (current.size() >= 2) {
         tokens.push_back(current);
     }
@@ -64,13 +95,29 @@ std::vector<std::string> tokenize(const std::string& text) {
 }
 
 
-// STEP 4: Stop word list
+
+/// STEP 4: Stop word list
+// ---------------------
+// Purpose:
+// - Removes high-frequency, low-information words from indexing and queries
+// - Improves ranking quality and reduces index size
+//
+// Notes:
+// - Stop words are applied consistently during:
+//   1) Document indexing
+//   2) Query processing
+// - Phrase queries preserve token order *after* stop-word removal
+
 std::unordered_set<std::string> stopWords = {
 
-    // articles
-    "a","an","the",
+    /* --------------------
+       Articles
+       -------------------- */
+    "a", "an", "the",
 
-    // pronouns
+    /* --------------------
+       Pronouns
+       -------------------- */
     "i","me","my","mine","myself",
     "you","your","yours","yourself","yourselves",
     "he","him","his","himself",
@@ -80,7 +127,9 @@ std::unordered_set<std::string> stopWords = {
     "they","them","their","theirs","themselves",
     "one","ones","someone","anyone","everyone","nobody","nothing","something",
 
-    // auxiliary & modal verbs
+    /* --------------------
+       Auxiliary & Modal Verbs
+       -------------------- */
     "am","is","are","was","were",
     "be","been","being",
     "have","has","had","having",
@@ -88,7 +137,9 @@ std::unordered_set<std::string> stopWords = {
     "will","would","shall","should",
     "can","could","may","might","must","ought",
 
-    // common verb noise (base + inflections)
+    /* --------------------
+       Common Verb Noise
+       -------------------- */
     "say","says","said","saying",
     "get","gets","got","getting",
     "make","makes","made","making",
@@ -114,12 +165,16 @@ std::unordered_set<std::string> stopWords = {
     "run","runs","ran","running",
     "move","moves","moved","moving",
 
-    // conjunctions
+    /* --------------------
+       Conjunctions
+       -------------------- */
     "and","or","but","if","while","because","as",
     "until","unless","although","though","whereas",
     "whether","nor","yet","so",
 
-    // prepositions
+    /* --------------------
+       Prepositions
+       -------------------- */
     "of","to","in","on","at","by","for","with",
     "about","against","between","into","through",
     "during","before","after","above","below",
@@ -127,55 +182,80 @@ std::unordered_set<std::string> stopWords = {
     "within","without","across","behind","beyond",
     "near","along","among","around","toward","towards",
 
-    // determiners & quantifiers
+    /* --------------------
+       Determiners & Quantifiers
+       -------------------- */
     "this","that","these","those",
     "each","every","either","neither",
     "some","any","no","none","all","both",
     "many","much","few","several","most","least",
     "such","same","other","another",
 
-    // adverbs
+    /* --------------------
+       Adverbs
+       -------------------- */
     "not","only","very","too","quite",
     "so","then","there","here",
     "when","where","why","how",
     "again","once","ever","never",
     "already","still","often","sometimes","usually",
 
-    // comparatives & intensifiers
+    /* --------------------
+       Comparatives & Intensifiers
+       -------------------- */
     "more","most","less","least",
     "enough","rather","quite",
 
-    // discourse / filler words
+    /* --------------------
+       Discourse / Filler Words
+       -------------------- */
     "yes","no","ok","okay",
     "also","just","even","though",
     "however","therefore","thus","hence",
     "otherwise","meanwhile","furthermore",
     "moreover","nevertheless",
 
-    // time & frequency
+    /* --------------------
+       Time & Frequency
+       -------------------- */
     "today","yesterday","tomorrow",
     "now","then","soon","later",
     "always","never","often","sometimes","usually",
 
-    // question words
+    /* --------------------
+       Question Words
+       -------------------- */
     "who","whom","whose",
     "which","what","when","where","why","how",
 
-    // numbers (written)
+    /* --------------------
+       Numbers (written)
+       -------------------- */
     "zero","one","two","three","four","five","six","seven","eight","nine","ten",
     "first","second","third","fourth","fifth","sixth","seventh","eighth","ninth","tenth",
 
-    // misc abbreviations & noise
+    /* --------------------
+       Abbreviations & Noise
+       -------------------- */
     "etc","ie","eg","vs","via","per",
 
-    // web / modern noise
+    /* --------------------
+       Web / Modern Noise
+       -------------------- */
     "http","https","www","com","org","net",
 
-    // generic nouns often treated as noise
-    "thing","things","stuff","something","anything","everything",
+    /* --------------------
+       Generic Nouns (low semantic value)
+       -------------------- */
+    "thing","things","stuff",
+    "something","anything","everything",
     "someone","anyone","everyone"
 };
-// Save positional index to disk
+
+/* ============================================================
+   POSitional Index Persistence (Optional Utility)
+   ============================================================ */
+
 void saveIndex(
     const std::string& filename,
     const std::unordered_map<
@@ -184,30 +264,22 @@ void saveIndex(
     >& positionalIndex
 ) {
     std::ofstream out(filename);
-    if (!out.is_open()) {
-        std::cerr << "Failed to open index file for writing\n";
+    if (!out) {
+        std::cerr << "Error: Unable to open index file for writing\n";
         return;
     }
 
-    for (const auto& wordEntry : positionalIndex) {
-        const std::string& word = wordEntry.first;
-
-        for (const auto& docPair : wordEntry.second) {
-            int docID = docPair.first;
-            const std::vector<int>& positions = docPair.second;
-
+    for (const auto& [word, docMap] : positionalIndex) {
+        for (const auto& [docID, positions] : docMap) {
             out << word << " " << docID;
             for (int pos : positions) {
                 out << " " << pos;
             }
-            out << "\n";
+            out << '\n';
         }
     }
-
-    out.close();
 }
 
-// Load positional index from disk
 void loadIndex(
     const std::string& filename,
     std::unordered_map<
@@ -216,81 +288,66 @@ void loadIndex(
     >& positionalIndex
 ) {
     std::ifstream in(filename);
-    if (!in.is_open()) {
-        std::cerr << "Index file not found. Rebuilding index.\n";
+    if (!in) {
+        std::cerr << "Index file not found. Rebuilding index...\n";
         return;
     }
 
     positionalIndex.clear();
 
-    std::string line;
-    while (std::getline(in, line)) {
-        std::istringstream iss(line);
+    std::string word;
+    int docID, pos;
 
-        std::string word;
-        int docID;
-        iss >> word >> docID;
-
-        int pos;
-        while (iss >> pos) {
+    while (in >> word >> docID) {
+        while (in.peek() == ' ') {
+            in >> pos;
             positionalIndex[word][docID].push_back(pos);
         }
     }
-
-    in.close();
 }
 
 const std::string INDEX_FILE = "positional_index.txt";
 
-bool phraseMatchTwoWords(
-    const std::vector<int>& p1,
-    const std::vector<int>& p2
-);
+/* ============================================================
+   PHRASE MATCHING (Two-Word Positional Merge)
+   ============================================================ */
 
 bool phraseMatchTwoWords(
     const std::vector<int>& p1,
     const std::vector<int>& p2
 ) {
-    int i = 0;
-    int j = 0;
+    size_t i = 0, j = 0;
 
     while (i < p1.size() && j < p2.size()) {
-        if (p2[j] - p1[i] == 1) {
-            return true;  // exact phrase match found
+        if (p2[j] == p1[i] + 1) {
+            return true;  // exact adjacency match
         } else if (p2[j] > p1[i]) {
-            i++;
+            ++i;
         } else {
-            j++;
+            ++j;
         }
     }
-
-    return false; // no phrase match
+    return false;
 }
 
-// Mutex to protect shared index structures
+/* ============================================================
+   MULTITHREADING INFRASTRUCTURE
+   ============================================================ */
+
+// Protects global index during merge
 std::mutex indexMutex;
 
 /*
 NOTE ON FALSE SHARING:
-- Multiple threads may update nearby memory locations (e.g., docLength entries).
-- This can cause cache line contention known as "false sharing".
-- Not optimized here because workload is coarse-grained and impact is minimal.
-- Would require padding or per-thread counters to eliminate fully.
+- Multiple threads may update adjacent memory (docLength entries).
+- This can cause cache-line contention ("false sharing").
+- Not optimized here because updates are coarse-grained.
+- Would require padding or per-thread buffers to eliminate fully.
 */
 
-
-void indexDocuments(
-    int start,
-    int end,
-    const std::vector<Document>& documents,
-    std::unordered_map<
-        std::string,
-        std::unordered_map<int, std::vector<int>>
-    >& globalIndex,
-    std::unordered_map<int, int>& globalDocLength
-);
-
-
+/* ============================================================
+   DOCUMENT INDEXING WORKER (THREAD-SAFE)
+   ============================================================ */
 
 void indexDocuments(
     int start,
@@ -302,13 +359,14 @@ void indexDocuments(
     >& globalIndex,
     std::unordered_map<int, int>& globalDocLength
 ) {
- 
-    // Thread-local index to avoid lock contention.
-// Each thread builds its own partial index without synchronization.
-// This significantly improves performance compared to locking per token.
+    /*
+     Strategy:
+     - Each thread builds its own local index (NO locks).
+     - After processing its document range, it merges once
+       into the shared global index (single lock).
+     - This drastically reduces lock contention.
+    */
 
-
-    // Thread-local structures
     std::unordered_map<
         std::string,
         std::unordered_map<int, std::vector<int>>
@@ -316,7 +374,7 @@ void indexDocuments(
 
     std::unordered_map<int, int> localDocLength;
 
-    for (int docID = start; docID < end; docID++) {
+    for (int docID = start; docID < end; ++docID) {
 
         const std::string& content = documents[docID].content;
         if (content.empty()) continue;
@@ -333,24 +391,13 @@ void indexDocuments(
         }
     }
 
-    // Merge into global structures (single lock)
-    // Merge local index into global index.
-// This is the ONLY critical section.
-// Lock is held briefly, once per thread, instead of once per token.
-
+    // ---- Merge Phase (single critical section) ----
     {
         std::lock_guard<std::mutex> lock(indexMutex);
 
-        for (auto& wordEntry : localIndex) {
-            const std::string& word = wordEntry.first;
-
-            for (auto& docEntry : wordEntry.second) {
-                int docID = docEntry.first;
-                auto& positions = docEntry.second;
-
-                auto& globalPositions =
-                    globalIndex[word][docID];
-
+        for (auto& [word, docMap] : localIndex) {
+            for (auto& [docID, positions] : docMap) {
+                auto& globalPositions = globalIndex[word][docID];
                 globalPositions.insert(
                     globalPositions.end(),
                     positions.begin(),
@@ -359,8 +406,8 @@ void indexDocuments(
             }
         }
 
-        for (auto& dl : localDocLength) {
-            globalDocLength[dl.first] += dl.second;
+        for (auto& [docID, len] : localDocLength) {
+            globalDocLength[docID] += len;
         }
     }
 }
@@ -368,35 +415,42 @@ void indexDocuments(
 
 
 int main() {
-    fs::path dataDir = "data/10k";
+   /* ============================================================
+   DATASET SETUP
+   ============================================================ */
 
-    if (!fs::exists(dataDir) || !fs::is_directory(dataDir)) {
-        std::cerr << "Data directory not found\n";
-        return 1;
-    }
+fs::path dataDir = "data/10k";
 
-    int docID = 0;
-    std::vector<Document> documents;
+if (!fs::exists(dataDir) || !fs::is_directory(dataDir)) {
+    std::cerr << "Data directory not found: " << dataDir << "\n";
+    return 1;
+}
 
-    // Document length:
-    // docID -> number of valid (non-stopword) tokens
-    std::unordered_map<int, int> docLength;
+// -------------------------------
+// Document storage
+// -------------------------------
+int docID = 0;
 
-    // Positional Index
-    // word -> { docID -> [pos1, pos2, ...] }
-    std::unordered_map<
-        std::string,
-        std::unordered_map<int, std::vector<int>>
-    > positionalIndex;
+// All documents loaded into memory (read-only after load)
+std::vector<Document> documents;
 
-    // Map document ID to file path
-    std::unordered_map<int, std::string> docIdToName; 
+// Document length:
+// docID -> number of valid (non-stopword) tokens
+std::unordered_map<int, int> docLength;
 
+// Positional inverted index
+// word -> { docID -> [pos1, pos2, ...] }
+std::unordered_map<
+    std::string,
+    std::unordered_map<int, std::vector<int>>
+> positionalIndex;
+
+// Map document ID to file path (used for output)
+std::unordered_map<int, std::string> docIdToName;
 
 
 /* ============================================================
-   BUILD POSITIONAL INDEX
-   PERFORMANCE MEASUREMENT
+   BUILD POSITIONAL INDEX – PERFORMANCE MEASUREMENT
    ============================================================
 
    Design choice:
@@ -404,51 +458,86 @@ int main() {
 
    Why per-document parallelism?
    - Each document can be tokenized independently.
-   - Avoids contention on shared structures during parsing.
+   - Avoids fine-grained locking on shared word entries.
    - Scales well with number of documents and CPU cores.
 
-   We deliberately avoid per-word parallelism because:
-   - Words are highly shared across documents.
-   - Fine-grained locking would destroy performance.
+   Why NOT per-word parallelism?
+   - Words are shared across documents.
+   - Would require locking for nearly every token.
+   - Leads to severe contention and poor scalability.
    ============================================================ */
 
-// Decide number of threads
+// Decide number of worker threads
 unsigned int numThreads = std::thread::hardware_concurrency();
 if (numThreads == 0) {
-    numThreads = 4;  // fallback
+    numThreads = 4;  // Safe fallback
 }
 
 std::cout << "Using " << numThreads << " threads for indexing\n";
+
 
 /* ============================================================
    INDEX BUILD TIMING (I/O + INDEXING)
    ============================================================ */
 auto indexBuildStart = std::chrono::high_resolution_clock::now();
 
-/* --------------------------------------------------
-   1) LOAD DOCUMENTS (SINGLE-THREADED I/O)
-   -------------------------------------------------- */
-for (const auto& entry : fs::directory_iterator(dataDir)) {
-    if (!entry.is_regular_file()) continue;
 
-    std::string filePath = entry.path().string();
+/* ------------------------------------------------------------
+   1) LOAD DOCUMENTS (SINGLE-THREADED I/O)
+   ------------------------------------------------------------
+   - File I/O is intentionally single-threaded
+   - Disk access does not scale well with threads
+   - Keeps indexing phase purely CPU-bound
+   ------------------------------------------------------------ */
+for (const auto& entry : fs::directory_iterator(dataDir)) {
+    if (!entry.is_regular_file()) {
+        continue;
+    }
+
     std::ifstream file(entry.path());
-    if (!file.is_open()) continue;
+    if (!file.is_open()) {
+        continue;
+    }
 
     std::string content(
         (std::istreambuf_iterator<char>(file)),
         std::istreambuf_iterator<char>()
     );
 
-    documents.push_back({docID, filePath, content});
-    docIdToName[docID] = filePath;
-    docLength[docID] = 0;
+    documents.push_back({
+        docID,
+        entry.path().string(),
+        content
+    });
+
+    docIdToName[docID] = entry.path().string();
+    docLength[docID] = 0;   // initialized, filled during indexing
 
     docID++;
 }
 
+/* ============================================================
+   INDEX BUILD BENCHMARK
+   (Single-thread vs Multi-thread)
+   ============================================================ */
+
+// --------------------------------------------------
+// Decide number of threads
+// --------------------------------------------------
+unsigned int numThreads = std::thread::hardware_concurrency();
+if (numThreads == 0) {
+    numThreads = 4; // fallback
+}
+
+std::cout << "Using " << numThreads << " threads for indexing\n";
+
+// --------------------------------------------------
+// Measure TOTAL index build time (I/O + indexing)
+// --------------------------------------------------
+auto indexBuildStart = std::chrono::high_resolution_clock::now();
+
 /* --------------------------------------------------
-   2) SINGLE-THREADED INDEXING (BASELINE)
+   1) SINGLE-THREADED INDEXING (BASELINE)
    -------------------------------------------------- */
 positionalIndex.clear();
 docLength.clear();
@@ -460,7 +549,7 @@ auto singleStart = std::chrono::high_resolution_clock::now();
 
 indexDocuments(
     0,
-    documents.size(),
+    static_cast<int>(documents.size()),
     documents,
     positionalIndex,
     docLength
@@ -477,7 +566,7 @@ std::cout << "Indexing time (single-thread): "
           << singleThreadTimeMs << " ms\n";
 
 /* --------------------------------------------------
-   3) RESET INDEX BEFORE MULTI-THREAD RUN
+   2) MULTI-THREADED INDEXING
    -------------------------------------------------- */
 positionalIndex.clear();
 docLength.clear();
@@ -485,9 +574,6 @@ for (size_t i = 0; i < documents.size(); i++) {
     docLength[i] = 0;
 }
 
-/* --------------------------------------------------
-   4) MULTI-THREADED INDEXING
-   -------------------------------------------------- */
 auto multiStart = std::chrono::high_resolution_clock::now();
 
 int N = static_cast<int>(documents.size());
@@ -498,6 +584,7 @@ std::vector<std::thread> threads;
 for (unsigned int i = 0; i < numThreads; i++) {
     int start = i * chunkSize;
     int end   = std::min(start + chunkSize, N);
+
     if (start >= end) break;
 
     threads.emplace_back(
@@ -525,7 +612,7 @@ std::cout << "Indexing time (multi-threaded): "
           << multiThreadTimeMs << " ms\n";
 
 /* --------------------------------------------------
-   5) TOTAL INDEX BUILD TIME (I/O + INDEXING)
+   3) TOTAL INDEX BUILD TIME (I/O + INDEXING)
    -------------------------------------------------- */
 auto indexBuildEnd = std::chrono::high_resolution_clock::now();
 
@@ -539,7 +626,7 @@ std::cout << "Index build time: "
           << " ms (" << documents.size() << " docs)\n";
 
 /* --------------------------------------------------
-   6) SPEEDUP REPORT
+   4) SPEEDUP REPORT
    -------------------------------------------------- */
 if (singleThreadTimeMs > 0 && multiThreadTimeMs > 0) {
     double speedup =
@@ -548,13 +635,8 @@ if (singleThreadTimeMs > 0 && multiThreadTimeMs > 0) {
 
     std::cout << "Speedup: " << speedup << "x\n";
 } else {
-    std::cout << "(Note: dataset is small; indexing completes in < 1 ms)\n";
+    std::cout << "(Dataset too small to measure speedup accurately)\n";
 }
-
-
-
-
-
 
 /* ===============================
    QUERY + TF-IDF RANKING + TOP-K
@@ -575,7 +657,7 @@ if (query.empty()) {
 auto queryStart = std::chrono::high_resolution_clock::now();
 
 /* ===============================
-   STEP 4: Detect Phrase Query
+   DETECT PHRASE QUERY
    =============================== */
 bool isPhraseQuery = false;
 
@@ -603,7 +685,7 @@ if (orderedQueryTokens.empty()) {
 }
 
 /* ===============================
-   STEP 6: PHRASE MATCHING (MULTI-WORD)
+   PHRASE QUERY PATH
    =============================== */
 if (isPhraseQuery && orderedQueryTokens.size() >= 2) {
 
@@ -612,9 +694,7 @@ if (isPhraseQuery && orderedQueryTokens.size() >= 2) {
     const std::string& firstWord = orderedQueryTokens[0];
     auto itFirst = positionalIndex.find(firstWord);
 
-    if (itFirst == positionalIndex.end()) {
-        std::cout << "No documents match the phrase.\n";
-    } else {
+    if (itFirst != positionalIndex.end()) {
 
         for (const auto& docPair : itFirst->second) {
             int docID = docPair.first;
@@ -624,16 +704,13 @@ if (isPhraseQuery && orderedQueryTokens.size() >= 2) {
                 const std::string& w1 = orderedQueryTokens[i];
                 const std::string& w2 = orderedQueryTokens[i + 1];
 
-                auto it1 = positionalIndex.find(w1);
-                auto it2 = positionalIndex.find(w2);
-
-                if (it1 == positionalIndex.end() ||
-                    it2 == positionalIndex.end() ||
-                    !it1->second.count(docID) ||
-                    !it2->second.count(docID) ||
+                if (!positionalIndex.count(w1) ||
+                    !positionalIndex.count(w2) ||
+                    !positionalIndex[w1].count(docID) ||
+                    !positionalIndex[w2].count(docID) ||
                     !phraseMatchTwoWords(
-                        it1->second.at(docID),
-                        it2->second.at(docID))) {
+                        positionalIndex[w1][docID],
+                        positionalIndex[w2][docID])) {
                     matchesAll = false;
                     break;
                 }
@@ -643,82 +720,70 @@ if (isPhraseQuery && orderedQueryTokens.size() >= 2) {
                 matchingDocs.push_back(docID);
             }
         }
+    }
 
-        if (matchingDocs.empty()) {
-            std::cout << "No documents match the phrase.\n";
-        } else {
-            std::cout << "Phrase match found in:\n";
-            for (int docID : matchingDocs) {
-                std::cout << "- " << docIdToName[docID] << "\n";
-            }
+    if (matchingDocs.empty()) {
+        std::cout << "No documents match the phrase.\n";
+    } else {
+        std::cout << "Phrase match found in:\n";
+        for (int docID : matchingDocs) {
+            std::cout << "- " << docIdToName[docID] << "\n";
         }
     }
 
-    /* -------------------------------
-       END QUERY TIMER (PHRASE)
-       ------------------------------- */
-    auto queryEnd = std::chrono::high_resolution_clock::now();
-    long long queryTimeMs =
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-            queryEnd - queryStart
-        ).count();
-
-    std::cout << "Query latency: " << queryTimeMs << " ms\n";
-    return 0;
 }
-
 /* ===============================
-   NORMAL TF-IDF RANKED QUERY
+   RANKED QUERY PATH (TF-IDF)
    =============================== */
+else {
 
-// Deduplicate query terms ONLY for ranking
-std::unordered_set<std::string> dedupedTokens(
-    orderedQueryTokens.begin(),
-    orderedQueryTokens.end()
-);
+    std::unordered_set<std::string> dedupedTokens(
+        orderedQueryTokens.begin(),
+        orderedQueryTokens.end()
+    );
 
-std::vector<std::string> queryTokenVector(
-    dedupedTokens.begin(),
-    dedupedTokens.end()
-);
+    std::vector<std::string> queryTokenVector(
+        dedupedTokens.begin(),
+        dedupedTokens.end()
+    );
 
-// Read Top-K
-std::cout << "Enter K (press Enter for default 5): ";
-std::string kInput;
-std::getline(std::cin, kInput);
+    std::cout << "Enter K (press Enter for default 5): ";
+    std::string kInput;
+    std::getline(std::cin, kInput);
 
-int K = 5;
-if (!kInput.empty()) {
-    try {
-        K = std::stoi(kInput);
-        if (K <= 0) K = 5;
-    } catch (...) {
-        K = 5;
+    int K = 5;
+    if (!kInput.empty()) {
+        try {
+            K = std::stoi(kInput);
+            if (K <= 0) K = 5;
+        } catch (...) {
+            K = 5;
+        }
     }
-}
 
-auto rankedResults = rankDocuments(
-    queryTokenVector,
-    positionalIndex,
-    docLength,
-    documents.size(),
-    K
-);
+    auto rankedResults = rankDocuments(
+        queryTokenVector,
+        positionalIndex,
+        docLength,
+        documents.size(),
+        K
+    );
 
-if (rankedResults.empty()) {
-    std::cout << "No query terms found in the index.\n";
-} else {
-    int rank = 1;
-    for (const auto& p : rankedResults) {
-        std::cout << "Rank " << rank << ": "
-                  << docIdToName[p.first]
-                  << " (score: " << p.second << ")\n";
-        rank++;
+    if (rankedResults.empty()) {
+        std::cout << "No query terms found in the index.\n";
+    } else {
+        int rank = 1;
+        for (const auto& p : rankedResults) {
+            std::cout << "Rank " << rank << ": "
+                      << docIdToName[p.first]
+                      << " (score: " << p.second << ")\n";
+            rank++;
+        }
     }
 }
 
 /* -------------------------------
-   END QUERY TIMER (RANKED)
+   END QUERY TIMER
    ------------------------------- */
 auto queryEnd = std::chrono::high_resolution_clock::now();
 long long queryTimeMs =
@@ -727,8 +792,6 @@ long long queryTimeMs =
     ).count();
 
 std::cout << "Query latency: " << queryTimeMs << " ms\n";
-
-
 
     return 0;
 }
