@@ -6,3 +6,26 @@ unordered_map<int, string> docIdToName;
 
 // stop words
 unordered_set<string> stopWords;
+
+// Parallelization strategy:
+// - Indexing is parallelized per document
+// - Documents are split into contiguous chunks
+// - Each thread processes a chunk independently
+// - Shared index structures are merged under a mutex
+//
+// Docs = [0 ... N-1]
+// Threads = T
+// Thread i processes docs:
+// [i * N/T  ...  (i+1) * N/T - 1]
+
+// OLD
+// Each token → lock → write → unlock
+
+// NEW
+// Thread builds localIndex (no locks)
+Thread finishes
+→ lock once
+→ merge localIndex into global index
+→ unlock
+
+

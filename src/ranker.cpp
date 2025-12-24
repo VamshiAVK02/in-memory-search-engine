@@ -1,7 +1,6 @@
 #include "ranker.h"
 #include <cmath>
 #include <queue>
-#include <utility>
 
 using std::vector;
 using std::string;
@@ -20,21 +19,23 @@ double computeIDF(int totalDocs, int docsWithTerm) {
     return std::log(static_cast<double>(totalDocs) / docsWithTerm);
 }
 
-// Computes TF-IDF scores for query documents
+// Computes TF-IDF scores for query documents using positional index
 std::vector<std::pair<int,double>> rankDocuments(
     const std::vector<std::string>& queryTokens,
-    const std::unordered_map<std::string, std::unordered_map<int,int>>& invertedIndex,
+    const std::unordered_map<
+        std::string,
+        std::unordered_map<int, std::vector<int>>
+    >& positionalIndex,
     const std::unordered_map<int,int>& docLength,
     int totalDocs,
     int K
-)
- { 
-
+) {
     unordered_map<int, double> docScores;
 
+    // Accumulate TF-IDF scores across all query terms
     for (const auto& token : queryTokens) {
-        auto it = invertedIndex.find(token);
-        if (it == invertedIndex.end()) continue;
+        auto it = positionalIndex.find(token);
+        if (it == positionalIndex.end()) continue;
 
         const auto& posting = it->second;
         int docsWithTerm = posting.size();
@@ -42,7 +43,7 @@ std::vector<std::pair<int,double>> rankDocuments(
 
         for (const auto& docPair : posting) {
             int docID = docPair.first;
-            int freq  = docPair.second;
+            int freq  = docPair.second.size(); // TF from positions
 
             auto lenIt = docLength.find(docID);
             if (lenIt == docLength.end()) continue;
@@ -51,31 +52,24 @@ std::vector<std::pair<int,double>> rankDocuments(
             docScores[docID] += tf * idf;
         }
     }
-    
+
+    // Rank documents using max-heap (priority queue)
     std::priority_queue<std::pair<double, int>> pq;
-
-    vector<pair<int,double>> results;
     for (const auto& entry : docScores) {
-        int docID = entry.first;
-        double score = entry.second;
-
-        pq.push({score, docID});
+        pq.push({entry.second, entry.first}); // {score, docID}
     }
 
+    // Extract Top-K results
     vector<pair<int,double>> rankedResults;
-     int count = 0;
+    int count = 0;
 
     while (!pq.empty() && count < K) {
-       auto top = pq.top();
-       pq.pop();
+        auto top = pq.top();
+        pq.pop();
 
-       double score = top.first;
-       int docID = top.second;
-
-       rankedResults.emplace_back(docID, score);
-       count++;
+        rankedResults.emplace_back(top.second, top.first);
+        count++;
     }
 
     return rankedResults;
-
 }
