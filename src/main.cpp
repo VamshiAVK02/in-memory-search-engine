@@ -418,6 +418,11 @@ if (numThreads == 0) {
 
 std::cout << "Using " << numThreads << " threads for indexing\n";
 
+/* ============================================================
+   INDEX BUILD TIMING (I/O + INDEXING)
+   ============================================================ */
+auto indexBuildStart = std::chrono::high_resolution_clock::now();
+
 /* --------------------------------------------------
    1) LOAD DOCUMENTS (SINGLE-THREADED I/O)
    -------------------------------------------------- */
@@ -514,7 +519,21 @@ std::cout << "Indexing time (multi-threaded): "
           << multiThreadTimeMs << " ms\n";
 
 /* --------------------------------------------------
-   5) SPEEDUP REPORT
+   5) TOTAL INDEX BUILD TIME (I/O + INDEXING)
+   -------------------------------------------------- */
+auto indexBuildEnd = std::chrono::high_resolution_clock::now();
+
+long long indexBuildTimeMs =
+    std::chrono::duration_cast<std::chrono::milliseconds>(
+        indexBuildEnd - indexBuildStart
+    ).count();
+
+std::cout << "Index build time: "
+          << indexBuildTimeMs
+          << " ms (" << documents.size() << " docs)\n";
+
+/* --------------------------------------------------
+   6) SPEEDUP REPORT
    -------------------------------------------------- */
 if (singleThreadTimeMs > 0 && multiThreadTimeMs > 0) {
     double speedup =
@@ -525,6 +544,7 @@ if (singleThreadTimeMs > 0 && multiThreadTimeMs > 0) {
 } else {
     std::cout << "(Note: dataset is small; indexing completes in < 1 ms)\n";
 }
+
 
 
 
