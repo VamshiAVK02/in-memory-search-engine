@@ -39,8 +39,6 @@ v
 v
 Ranked Search Results
 
-yaml
-Copy code
 
 Documents are tokenized and normalized before being indexed into a positional inverted index.
 Queries are processed either using TF-IDF scoring for ranked retrieval or positional matching for phrase queries.
